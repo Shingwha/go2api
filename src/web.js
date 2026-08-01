@@ -1245,10 +1245,12 @@ function renderModels() {
   const price = (v) => (v == null ? '—' : '$' + fmt(v, 4));
   // 用量统计（来自 /admin/stats.byModel）
   const byModelStats = new Map((state.stats?.byModel || []).map((m) => [m.model, m]));
-  // 每个模型被多少订阅授权
+  // 每个模型被多少有效订阅授权（'*' = 不限模型，对所有模型 +1；disabled/过期订阅不计）
   const authCount = new Map();
+  let unlimitedSubs = 0;
   for (const s of state.subs) {
-    if (s.modelsList === '*') continue;
+    if (s.status !== 'active' || s.expired) continue;
+    if (s.modelsList === '*') { unlimitedSubs++; continue; }
     for (const m of s.modelsList) authCount.set(m, (authCount.get(m) || 0) + 1);
   }
   // 按厂商分组
@@ -1263,7 +1265,7 @@ function renderModels() {
     rowsHtml.push('<tr class="model-group"><td colspan="10">' + esc(g) + '</td></tr>');
     for (const [id, m] of items) {
       const st = byModelStats.get(id);
-      const n = authCount.get(id);
+      const n = (authCount.get(id) || 0) + unlimitedSubs;
       const custom = m.source === 'custom';
       rowsHtml.push('<tr>' +
         '<td class="mono">' + esc(id) + (custom ? ' <span class="ep-badge" title="用户自定义价格（存数据库）">自</span>' : '') + '</td>' +
@@ -1272,7 +1274,8 @@ function renderModels() {
         '<td class="mono">' + price(m.cacheRead) + '</td><td class="mono">' + (!m.cacheWrite ? '—' : price(m.cacheWrite)) + '</td>' +
         '<td class="mono">' + (st ? fmt(st.requests, 0) : '—') + '</td>' +
         '<td class="mono">' + (st ? '$' + fmt(st.cost, 2) : '—') + '</td>' +
-        '<td>' + (n ? n + ' 个订阅' : '<span style="color:var(--text-3)">未授权</span>') + '</td>' +
+        '<td>' + (n ? n + ' 个订阅' : '<span style="color:var(--text-3)">未授权</span>') +
+        (unlimitedSubs ? '<span class="ep-badge" title="另有 ' + unlimitedSubs + ' 个不限模型订阅，可访问全部模型">不限×' + unlimitedSubs + '</span>' : '') + '</td>' +
         '<td><button class="btn-icon" data-act="model-edit" data-model="' + esc(id) + '">编辑</button>' +
         (custom ? '<button class="btn-icon" data-act="model-del" data-model="' + esc(id) + '" style="color:var(--red)">删除</button>' : '') + '</td>' +
         '</tr>');
