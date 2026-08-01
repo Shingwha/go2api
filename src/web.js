@@ -174,7 +174,7 @@ async function loadSubs() {
       '<td>' + s.id + '</td>' +
       '<td>' + esc(s.name) + '</td>' +
       '<td><span class="mono key" title="' + esc(s.key) + '">' + esc(s.key) + '</span> ' +
-        '<button class="secondary" style="padding:2px 8px;font-size:11px" onclick="copyKey(\'' + s.key + '\')">复制</button></td>' +
+        '<button class="secondary" style="padding:2px 8px;font-size:11px" onclick="copyKey(\\'' + esc(s.key) + '\\')">复制</button></td>' +
       '<td><span class="badge ' + s.status + '">' + s.status + '</span></td>' +
       '<td title="' + models + '">' + (models.length > 20 ? models.slice(0, 20) + '…' : models) + '</td>' +
       '<td>' + quota + '</td>' +
