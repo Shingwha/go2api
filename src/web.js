@@ -271,7 +271,6 @@ textarea { resize: vertical; min-height: 60px; }
 .key-box { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); padding: 5px 8px; }
 .key-box .k { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: pointer; }
 .key-box .k:hover { color: var(--text); }
-.key-box .k.revealed { color: var(--text); letter-spacing: .02em; }
 .key-box .btn-icon { padding: 3px 8px; min-height: 26px; flex-shrink: 0; }
 .btn-icon.copied { color: var(--green); border-color: var(--green); }
 
@@ -282,10 +281,15 @@ textarea { resize: vertical; min-height: 60px; }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button:hover { color: var(--text); }
 .seg button.active { background: var(--accent); color: var(--accent-text); }
-#trendChart { display: flex; align-items: flex-end; gap: 3px; height: 190px; padding: 10px 2px 0; overflow-x: auto; }
-.trend-col { flex: 1 1 0; min-width: 16px; height: 100%; display: flex; flex-direction: column; cursor: pointer; }
-.trend-stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; height: 100%; min-height: 2px; background: var(--surface-2); }
+#trendChart { display: flex; align-items: flex-end; gap: 3px; height: 190px; padding: 24px 2px 0; overflow-x: auto; }
+#trendChart.few { justify-content: center; gap: 8px; }
+.trend-col { flex: 1 1 0; min-width: 14px; height: 100%; display: flex; flex-direction: column; cursor: pointer; position: relative; }
+#trendChart.few .trend-col { flex: 0 0 44px; }
+.trend-stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; height: 100%; min-height: 2px; background: var(--surface-2); border-radius: 2px 2px 0 0; overflow: hidden; }
 .trend-seg { width: 100%; min-height: 1px; }
+.trend-val { display: none; position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); padding: 0 4px; white-space: nowrap; z-index: 3; }
+#trendChart.few .trend-val { display: block; background: transparent; border: none; }
+.trend-col:hover .trend-val { display: block; }
 .trend-col:hover .trend-stack { outline: 1px solid var(--accent); outline-offset: 1px; }
 .trend-col.sel .trend-stack { outline: 2px solid var(--accent); outline-offset: 1px; }
 .trend-x { font-size: 10px; color: var(--text-3); text-align: center; margin-top: 5px; white-space: nowrap; overflow: hidden; }
@@ -663,6 +667,13 @@ td .mono { font-size: 12px; }
           <input id="fName" placeholder="如：朋友A">
         </div>
         <div class="form-field" style="grid-column:1/-1">
+          <label>账户状态</label>
+          <select id="fStatus">
+            <option value="active">正常</option>
+            <option value="disabled">已停用（暂时禁用，请求将被拒绝）</option>
+          </select>
+        </div>
+        <div class="form-field" style="grid-column:1/-1">
           <label>允许模型</label>
           <input id="fModels" placeholder="逗号分隔，留空 = 全部">
           <span class="hint">如 deepseek-v4-flash, kimi-k2.6</span>
@@ -751,7 +762,6 @@ const state = {
   detailSub: null,
   detailUsage: [],
   theme: localStorage.getItem('go2api_theme') || 'auto', // auto | light | dark
-  reveal: {},      // 卡片上已展开完整 key 的订阅 id
   expandModels: {}, // 卡片上已展开全部模型 chips 的订阅 id
 };
 
@@ -765,12 +775,6 @@ function shortTime(s) {
   if (!s) return '—';
   const d = new Date(s);
   return d.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-}
-// 掩码显示：sk-go2api-********xxxx
-function maskKey(k) {
-  if (!k) return '';
-  if (k.length <= 16) return k;
-  return k.slice(0, 12) + '•'.repeat(10) + k.slice(-4);
 }
 // 相对时间："5 分钟前"
 function relTime(s) {
@@ -1037,10 +1041,14 @@ function renderTrend() {
   const chart = $('#trendChart');
   if (!list.length) {
     chart.innerHTML = '<div class="empty" style="padding:40px">该时段暂无消费记录</div>';
+    chart.classList.remove('few');
     $('#trendDetail').innerHTML = '';
     return;
   }
-  chart.innerHTML = list.map((b) => {
+  chart.classList.toggle('few', list.length <= 14);
+  // 柱子多时 x 轴标签隔几根显示一个，避免重叠
+  const labelEvery = list.length > 48 ? Math.ceil(list.length / 24) : 1;
+  chart.innerHTML = list.map((b, i) => {
     const segs = [...b.items.values()].sort((a, c) => c.cost - a.cost);
     const hPct = Math.max(2, (b.cost / maxCost) * 100);
     const segHtml = segs.map((it) =>
@@ -1049,8 +1057,10 @@ function renderTrend() {
     ).join('');
     const x = trendState.gran === 'hour' ? b.key.slice(5, 16) : b.key.slice(5);
     return '<div class="trend-col' + (trendState.sel === b.key ? ' sel' : '') + '" data-bucket="' + esc(b.key) + '" title="' + esc(b.key) + '｜$' + fmt(b.cost, 4) + '｜' + b.req + ' 次请求（点击查看明细）">' +
+      '<div class="trend-val">$' + fmt(b.cost, 2) + '</div>' +
       '<div class="trend-stack">' + segHtml + '</div>' +
-      '<div class="trend-x">' + esc(x) + '</div></div>';
+      (i % labelEvery === 0 ? '<div class="trend-x">' + esc(x) + '</div>' : '<div class="trend-x">&nbsp;</div>') +
+      '</div>';
   }).join('');
   // 选中柱子的明细
   const selB = trendState.sel && buckets.get(trendState.sel);
@@ -1139,10 +1149,7 @@ function renderSubCard(s) {
         : '') + '</div>';
   }
 
-  // key：默认掩码，可展开显示完整
-  const revealed = !!state.reveal[s.id];
-  const keyText = revealed ? s.key : maskKey(s.key);
-
+  // key：直接展示完整密钥，点击可复制
   return '<div class="sub-card">' +
     '<div class="sub-head">' +
       '<div class="sub-name" data-act="detail" data-id="' + s.id + '" title="点击查看详情">' + esc(s.name) + '</div>' +
@@ -1155,11 +1162,11 @@ function renderSubCard(s) {
     '</div>' +
     '<div class="sub-foot">' +
       '<div class="key-box" style="flex:1;min-width:0" title="点击密钥可复制完整 Key">' +
-        '<span class="k' + (revealed ? ' revealed' : '') + '" data-act="copy" data-key="' + esc(s.key) + '">' + esc(keyText) + '</span>' +
-        '<button class="btn-icon" data-act="reveal" data-id="' + s.id + '" title="' + (revealed ? '隐藏' : '显示') + '完整密钥">' + (revealed ? '隐藏' : '显示') + '</button>' +
+        '<span class="k" data-act="copy" data-key="' + esc(s.key) + '">' + esc(s.key) + '</span>' +
         '<button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '" title="复制完整 Key">复制</button>' +
       '</div>' +
       '<div class="sub-actions">' +
+        '<button class="btn-icon" data-act="toggle" data-id="' + s.id + '" style="color:' + (s.status === 'active' ? 'var(--amber)' : 'var(--green)') + '" title="' + (s.status === 'active' ? '暂时禁用该账户' : '恢复该账户') + '">' + (s.status === 'active' ? '禁用' : '启用') + '</button>' +
         '<button class="btn-icon" data-act="edit" data-id="' + s.id + '">编辑</button>' +
         '<button class="btn-icon" data-act="rotate" data-id="' + s.id + '" title="生成新 key，旧 key 失效">换Key</button>' +
         '<button class="btn-icon" data-act="reset" data-id="' + s.id + '">重置</button>' +
@@ -1266,6 +1273,7 @@ function openDrawer(sub) {
   $('#drawerTitle').textContent = sub ? '编辑订阅' : '新建订阅';
   $('#fId').value = sub ? sub.id : '';
   $('#fName').value = sub ? sub.name : '';
+  $('#fStatus').value = sub ? (sub.status === 'disabled' ? 'disabled' : 'active') : 'active';
   $('#fModels').value = (sub && sub.modelsList !== '*') ? sub.modelsList.join(', ') : '';
   $('#fQuotaUsd').value = sub ? (sub.quota_usd || '') : '';
   $('#fQuotaReq').value = sub ? (sub.quota_requests || '') : '';
@@ -1290,6 +1298,7 @@ async function saveDrawer() {
   const id = $('#fId').value;
   const body = {
     name: $('#fName').value.trim(),
+    status: $('#fStatus').value,
     models: $('#fModels').value.split(',').map((s) => s.trim()).filter(Boolean),
     quotaUsd: parseFloat($('#fQuotaUsd').value) || 0,
     quotaRequests: parseInt($('#fQuotaReq').value, 10) || 0,
@@ -1403,9 +1412,18 @@ document.addEventListener('click', async (e) => {
     };
     copyText(t.dataset.key, markDone);
     toast('已复制到剪贴板', 'ok');
-  } else if (act === 'reveal') {
-    state.reveal[id] = !state.reveal[id];
-    renderSubs();
+  } else if (act === 'toggle') {
+    const disabling = sub.status === 'active';
+    const ok = await confirm2(disabling ? '禁用账户' : '启用账户',
+      disabling
+        ? '将<strong>暂时禁用</strong> <b>' + esc(sub.name) + '</b>，期间所有请求会被拒绝。可随时重新启用。确定？'
+        : '将恢复 <b>' + esc(sub.name) + '</b> 的正常使用。确定？');
+    if (!ok) return;
+    try {
+      await api('/admin/subs/' + id, { method: 'PATCH', body: JSON.stringify({ status: disabling ? 'disabled' : 'active' }) });
+      toast(disabling ? '已禁用' : '已启用', 'ok');
+      refresh();
+    } catch (e) { toast('操作失败：' + e.message, 'err'); }
   } else if (act === 'expand') {
     state.expandModels[id] = true;
     renderSubs();
