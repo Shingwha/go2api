@@ -830,6 +830,7 @@ const state = {
 function $(s) { return document.querySelector(s); }
 function $$(s) { return document.querySelectorAll(s); }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function maskKey(k) { k = String(k || ''); return k.length <= 14 ? k : k.slice(0, 6) + '…' + k.slice(-4); }
 function fmt(n, d = 4) { return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: d }); }
 function money(n) { return '$' + fmt(n, 4); }
 function shortTime(s) {
@@ -1216,7 +1217,7 @@ function renderSubCard(s) {
     '</div>' +
     '<div class="sub-foot">' +
       '<div class="key-box" style="flex:1;min-width:0" title="点击密钥可复制完整 Key">' +
-        '<span class="k" data-act="copy" data-key="' + esc(s.key) + '">' + esc(s.key) + '</span>' +
+        '<span class="k" data-act="copy" data-key="' + esc(s.key) + '">' + esc(maskKey(s.key)) + '</span>' +
         '<button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '" title="复制完整 Key">复制</button>' +
       '</div>' +
       '<div class="sub-actions">' +
@@ -1485,7 +1486,7 @@ function renderDetail(s, usage) {
   const models = s.modelsList === '*' ? '全部模型' : s.modelsList.join(', ');
   let html = '';
   html += kv('状态', '<span class="status-tag">' + statusTag + '</span>');
-  html += kv('API Key', '<span class="mono" style="font-size:11px;word-break:break-all">' + esc(s.key) + '</span> <button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '">复制</button>');
+  html += kv('API Key', '<span class="mono" style="font-size:11px;word-break:break-all">' + esc(maskKey(s.key)) + '</span> <button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '">复制</button>');
   html += kv('模型', esc(models));
   html += kv('美元额度', s.quota_usd > 0 ? '$' + fmt(s.quota_usd) : '不限');
   html += kv('已用美元', '$' + fmt(s.used_usd, 6));
