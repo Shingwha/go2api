@@ -130,14 +130,55 @@ async function handleAdmin(req, res, pathParts) {
     return json(res, 200, db.stats());
   }
 
-  // GET /admin/models — 模型目录与价格（本地表 + 上游动态模型）
-  if (method === 'GET' && a === 'models') {
-    const catalog = require('./prices').getModelCatalog();
+  // GET /admin/models — 模型目录与价格（内置默认 + 用户自定义），pending = 上游发现待配置
+  if (method === 'GET' && a === 'models' && !b) {
+    const { MODELS, getModelCatalog, getPendingModels } = require('./prices');
     const out = {};
-    for (const [id, m] of Object.entries(catalog)) {
-      out[id] = { ...m, source: m.estimated ? 'remote' : 'local' };
+    for (const [id, m] of Object.entries(getModelCatalog())) {
+      out[id] = { ...m, builtin: !!MODELS[id] };
     }
-    return json(res, 200, { models: out });
+    return json(res, 200, { models: out, pending: getPendingModels() });
+  }
+
+  // POST /admin/models — 添加/配置模型价格
+  if (method === 'POST' && a === 'models' && !b) {
+    let f;
+    try { f = await readJsonBody(req); } catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+    if (!f.id) return json(res, 400, { error: 'id is required' });
+    const id = String(f.id).trim();
+    if (!/^[\w.-]+$/.test(id)) return json(res, 400, { error: 'invalid model id' });
+    const { MODELS } = require('./prices');
+    const defaults = MODELS[id] || {};
+    const m = db.upsertModelPrice(id, {
+      endpoint: f.endpoint, in: f.in, out: f.out, cacheRead: f.cacheRead, cacheWrite: f.cacheWrite,
+      highThreshold: f.highThreshold, inHigh: f.inHigh, outHigh: f.outHigh,
+      cacheReadHigh: f.cacheReadHigh, cacheWriteHigh: f.cacheWriteHigh,
+    }, defaults);
+    require('./prices').refreshPendingModels();
+    return json(res, 201, { ok: true, model: { ...m, source: 'custom' } });
+  }
+
+  // PATCH /admin/models/:id — 更新价格
+  if (method === 'PATCH' && a === 'models' && b) {
+    let f;
+    try { f = await readJsonBody(req); } catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+    const id = String(b);
+    const { MODELS } = require('./prices');
+    const defaults = MODELS[id] || {};
+    const m = db.upsertModelPrice(id, {
+      endpoint: f.endpoint, in: f.in, out: f.out, cacheRead: f.cacheRead, cacheWrite: f.cacheWrite,
+      highThreshold: f.highThreshold, inHigh: f.inHigh, outHigh: f.outHigh,
+      cacheReadHigh: f.cacheReadHigh, cacheWriteHigh: f.cacheWriteHigh,
+    }, defaults);
+    require('./prices').refreshPendingModels();
+    return json(res, 200, { ok: true, model: { ...m, source: 'custom' } });
+  }
+
+  // DELETE /admin/models/:id — 删除自定义价格（内置模型回落默认）
+  if (method === 'DELETE' && a === 'models' && b) {
+    db.deleteModelPrice(String(b));
+    require('./prices').refreshPendingModels();
+    return json(res, 200, { ok: true });
   }
 
   return json(res, 404, { error: 'not found' });

@@ -633,12 +633,16 @@ td .mono { font-size: 12px; }
         <div class="page-head">
           <div>
             <h1 class="page-title">模型与价格</h1>
-            <div class="page-sub">每 1M tokens 计价（美元）</div>
+            <div class="page-sub">每 1M tokens 计价（美元）· 自定义价格存数据库，内置模型可覆盖</div>
           </div>
-          <div class="form-field" style="margin:0">
-            <input type="text" id="modelSearch" placeholder="搜索模型…" style="min-width:160px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="form-field" style="margin:0">
+              <input type="text" id="modelSearch" placeholder="搜索模型…" style="min-width:160px">
+            </div>
+            <button class="btn btn-primary" id="modelAddBtn">+ 添加模型</button>
           </div>
         </div>
+        <div id="modelsPending"></div>
         <div class="card" style="padding:0">
           <div class="table-wrap" id="modelsTable"></div>
         </div>
@@ -748,6 +752,50 @@ td .mono { font-size: 12px; }
 <!-- ===== Toast ===== -->
 <div id="toasts"></div>
 
+<!-- ===== 模型价格编辑 ===== -->
+<div class="modal-mask" id="modelModalMask">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-head" id="mmTitle">添加模型</div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-field" style="grid-column:1/-1">
+          <label>模型 ID *</label>
+          <input id="mmId" placeholder="如 kimi-k3" spellcheck="false">
+          <span class="hint">与上游 /v1/models 返回的 ID 一致</span>
+        </div>
+        <div class="form-field">
+          <label>端点</label>
+          <select id="mmEndpoint">
+            <option value="chat/completions">chat（OpenAI）</option>
+            <option value="responses">responses</option>
+            <option value="messages">messages（Anthropic）</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>缓存写</label>
+          <input id="mmCacheW" type="number" min="0" step="0.0001" placeholder="0">
+        </div>
+        <div class="form-field">
+          <label>输入价（每 1M）</label>
+          <input id="mmIn" type="number" min="0" step="0.0001" placeholder="0">
+        </div>
+        <div class="form-field">
+          <label>输出价（每 1M）</label>
+          <input id="mmOut" type="number" min="0" step="0.0001" placeholder="0">
+        </div>
+        <div class="form-field">
+          <label>缓存读（每 1M）</label>
+          <input id="mmCacheR" type="number" min="0" step="0.0001" placeholder="0">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="modelModalCancel">取消</button>
+      <button class="btn btn-primary" id="modelModalSave">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -758,6 +806,7 @@ const state = {
   stats: null,
   subs: [],
   models: {},
+  pendingModels: [],
   usage: [],
   detailSub: null,
   detailUsage: [],
@@ -925,7 +974,7 @@ function closeSidebarMobile() { $('#sidebar').classList.remove('open'); $('#over
 async function refresh(showToast = false) {
   try {
     const [stats, subs, models] = await Promise.all([api('/admin/stats'), api('/admin/subs'), api('/admin/models')]);
-    state.stats = stats; state.subs = subs.subscriptions; state.models = models.models;
+    state.stats = stats; state.subs = subs.subscriptions; state.models = models.models; state.pendingModels = models.pending || [];
     renderStats();
     renderSubs();
     loadTrend();
@@ -1186,10 +1235,8 @@ function renderModels() {
   if (!modelCache) modelCache = Object.entries(state.models).sort((a, b) => a[0].localeCompare(b[0]));
   const q = ($('#modelSearch').value || '').trim().toLowerCase();
   const rows = modelCache.filter(([id]) => !q || id.toLowerCase().includes(q));
-  const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e === 'any' ? '自动' : e;
-  // 价格格式化 + 估算标记
-  const price = (v, est) => (v == null ? '—' : (est ? '≈$' : '$') + fmt(v, 4) + (est ? '' : ''));
-  const estTip = '价格估算（上游未提供定价，按同族模型推算）';
+  const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e;
+  const price = (v) => (v == null ? '—' : '$' + fmt(v, 4));
   // 用量统计（来自 /admin/stats.byModel）
   const byModelStats = new Map((state.stats?.byModel || []).map((m) => [m.model, m]));
   // 每个模型被多少订阅授权
@@ -1207,27 +1254,88 @@ function renderModels() {
   }
   const rowsHtml = [];
   for (const [g, items] of groups) {
-    rowsHtml.push('<tr class="model-group"><td colspan="9">' + esc(g) + '</td></tr>');
+    rowsHtml.push('<tr class="model-group"><td colspan="10">' + esc(g) + '</td></tr>');
     for (const [id, m] of items) {
       const st = byModelStats.get(id);
       const n = authCount.get(id);
-      const est = !!m.estimated;
+      const custom = m.source === 'custom';
       rowsHtml.push('<tr>' +
-        '<td class="mono">' + esc(id) + (est ? ' <span class="ep-badge" title="' + estTip + '">估</span>' : '') + '</td>' +
+        '<td class="mono">' + esc(id) + (custom ? ' <span class="ep-badge" title="用户自定义价格（存数据库）">自</span>' : '') + '</td>' +
         '<td><span class="ep-badge">' + esc(epLabel(m.endpoint)) + '</span></td>' +
-        '<td class="mono">' + price(m.in, est) + '</td><td class="mono">' + price(m.out, est) + '</td>' +
-        '<td class="mono">' + price(m.cacheRead, est) + '</td><td class="mono">' + (!m.cacheWrite ? '—' : price(m.cacheWrite, est)) + '</td>' +
+        '<td class="mono">' + price(m.in) + '</td><td class="mono">' + price(m.out) + '</td>' +
+        '<td class="mono">' + price(m.cacheRead) + '</td><td class="mono">' + (!m.cacheWrite ? '—' : price(m.cacheWrite)) + '</td>' +
         '<td class="mono">' + (st ? fmt(st.requests, 0) : '—') + '</td>' +
         '<td class="mono">' + (st ? '$' + fmt(st.cost, 2) : '—') + '</td>' +
         '<td>' + (n ? n + ' 个订阅' : '<span style="color:var(--text-3)">未授权</span>') + '</td>' +
+        '<td><button class="btn-icon" data-act="model-edit" data-model="' + esc(id) + '">编辑</button>' +
+        (custom ? '<button class="btn-icon" data-act="model-del" data-model="' + esc(id) + '" style="color:var(--red)">删除</button>' : '') + '</td>' +
         '</tr>');
     }
   }
   $('#modelsTable').innerHTML = '<table><thead><tr>' +
-    '<th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读</th><th>缓存写</th><th>请求</th><th>成本</th><th>授权</th>' +
+    '<th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读</th><th>缓存写</th><th>请求</th><th>成本</th><th>授权</th><th>操作</th>' +
     '</tr></thead><tbody>' +
-    (rowsHtml.length ? rowsHtml.join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-3);padding:32px">无匹配模型</td></tr>') +
+    (rowsHtml.length ? rowsHtml.join('') : '<tr><td colspan="10" style="text-align:center;color:var(--text-3);padding:32px">无匹配模型</td></tr>') +
     '</tbody></table>';
+  // 上游新模型提示
+  const pending = state.pendingModels || [];
+  $('#modelsPending').innerHTML = pending.length
+    ? '<div class="card" style="margin-bottom:14px;padding:12px 16px;border-left:3px solid var(--amber)">' +
+      '<div style="font-size:13px;font-weight:600;margin-bottom:6px">上游发现 ' + pending.length + ' 个新模型，尚未配置价格</div>' +
+      '<div class="chips">' + pending.map((id) =>
+        '<span class="chip" style="cursor:pointer" data-act="model-pending" data-model="' + esc(id) + '" title="点击为该模型配置价格">' + esc(id) + ' ＋</span>'
+      ).join('') + '</div>' +
+      '<div style="font-size:11px;color:var(--text-3);margin-top:6px">点击模型直接配置价格；未配置的模型不可用</div>' +
+      '</div>'
+    : '';
+}
+
+// ============ 模型价格编辑（添加/修改） ============
+let modelEditingId = null;
+function openModelModal(m, pendingId) {
+  modelEditingId = m ? m.id : null;
+  $('#mmTitle').textContent = m ? '编辑模型价格' : '添加模型';
+  $('#mmId').value = m ? m.id : (pendingId || '');
+  $('#mmId').disabled = !!m;
+  $('#mmEndpoint').value = m ? (m.endpoint || 'chat/completions') : 'chat/completions';
+  $('#mmIn').value = m ? m.in : '';
+  $('#mmOut').value = m ? m.out : '';
+  $('#mmCacheR').value = m ? m.cacheRead : '';
+  $('#mmCacheW').value = m ? m.cacheWrite : '';
+  $('#modelModalMask').classList.add('open');
+  $('#mmId').focus();
+}
+function closeModelModal() {
+  $('#modelModalMask').classList.remove('open');
+  modelEditingId = null;
+}
+async function saveModelModal() {
+  const id = $('#mmId').value.trim();
+  if (!id) { toast('请填写模型 ID', 'err'); return; }
+  const body = {
+    endpoint: $('#mmEndpoint').value,
+    in: parseFloat($('#mmIn').value),
+    out: parseFloat($('#mmOut').value),
+    cacheRead: parseFloat($('#mmCacheR').value),
+    cacheWrite: parseFloat($('#mmCacheW').value),
+  };
+  if (body.in == null || body.out == null || isNaN(body.in) || isNaN(body.out)) {
+    toast('请填写输入价与输出价', 'err'); return;
+  }
+  const editing = !!modelEditingId;
+  $('#modelModalSave').disabled = true;
+  try {
+    if (editing) await api('/admin/models/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) });
+    else await api('/admin/models', { method: 'POST', body: JSON.stringify(body) });
+    toast(editing ? '价格已保存' : '模型已添加', 'ok');
+    closeModelModal();
+    modelCache = null;
+    refresh();
+  } catch (e) {
+    toast('保存失败：' + e.message, 'err');
+  } finally {
+    $('#modelModalSave').disabled = false;
+  }
 }
 
 // ============ 渲染：用量日志 ============
@@ -1434,6 +1542,25 @@ document.addEventListener('click', async (e) => {
   } else if (act === 'collapse') {
     state.expandModels[id] = false;
     renderSubs();
+  } else if (act === 'model-edit') {
+    const m = state.models[t.dataset.model];
+    if (m) openModelModal(m);
+  } else if (act === 'model-pending') {
+    openModelModal(null, t.dataset.model);
+  } else if (act === 'model-del') {
+    const mid = t.dataset.model;
+    const m = state.models[mid] || {};
+    const ok = await confirm2('删除自定义价格',
+      '将删除 <b>' + esc(mid) + '</b> 的自定义价格配置。' +
+      (m.builtin ? '该模型将<strong>回落到内置默认价格</strong>。' : '该模型将<strong>不再可用</strong>。') +
+      '确定？');
+    if (!ok) return;
+    try {
+      await api('/admin/models/' + encodeURIComponent(mid), { method: 'DELETE' });
+      toast('已删除', 'ok');
+      modelCache = null;
+      refresh();
+    } catch (e) { toast('删除失败：' + e.message, 'err'); }
   } else if (act === 'detail') {
     openDetail(id);
   } else if (act === 'edit') {
@@ -1477,6 +1604,10 @@ $('#detailClose').addEventListener('click', closeDetail);
 $('#detailMask').addEventListener('click', closeDetail);
 $('#modalMask').addEventListener('click', (e) => { if (e.target === $('#modalMask')) $('#modalMask').classList.remove('open'); });
 $('#modelSearch').addEventListener('input', renderModels);
+$('#modelAddBtn').addEventListener('click', () => openModelModal(null, ''));
+$('#modelModalCancel').addEventListener('click', closeModelModal);
+$('#modelModalSave').addEventListener('click', saveModelModal);
+$('#modelModalMask').addEventListener('click', (e) => { if (e.target === $('#modelModalMask')) closeModelModal(); });
 $('#subSearch').addEventListener('input', renderSubs);
 $('#subFilter').addEventListener('change', renderSubs);
 $('#subSort').addEventListener('change', renderSubs);

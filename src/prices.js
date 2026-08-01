@@ -65,36 +65,40 @@ function isGloballyEnabled(model) {
   return cfg.enabledModels.length === 0 || cfg.enabledModels.includes(model);
 }
 
-// ---------- 上游动态同步 ----------
+// ---------- 模型目录：内置默认 + 用户自定义（DB 优先） ----------
 
-// 上游有、本地价格表没有的模型（价格估算，端点不强制）
-const remoteModels = new Map();
-
-const REMOTE_DEFAULT_PRICE = { in: 0.5, out: 1.5, cacheRead: 0.1, cacheWrite: 0, estimated: true };
+// 上游有、本地目录（内置+自定义）没有的模型 ID —— 仅提示，不自动合入
+let pendingUpstreamModels = [];
+let lastUpstreamIds = [];
 
 /**
- * 合并后的完整模型目录：本地价格表 + 上游动态模型。
- * 每条额外带 source: 'local' | 'remote'，remote 模型带 estimated: true
+ * 合并后的完整模型目录：
+ *  - 用户自定义（model_prices 表）优先
+ *  - 内置默认表兜底
+ * 每条带 source: 'default' | 'custom'，custom 表示用户自己配置过价格
  */
 function getModelCatalog() {
-  const out = { ...MODELS };
-  for (const [id, m] of remoteModels) out[id] = m;
+  const db = require('./db');
+  const out = {};
+  for (const [id, m] of Object.entries(MODELS)) {
+    out[id] = { ...m, source: 'default' };
+  }
+  for (const c of db.listModelPrices()) {
+    out[c.id] = {
+      endpoint: c.endpoint,
+      in: c.in, out: c.out, cacheRead: c.cacheRead, cacheWrite: c.cacheWrite,
+      highThreshold: c.highThreshold, inHigh: c.inHigh, outHigh: c.outHigh,
+      cacheReadHigh: c.cacheReadHigh, cacheWriteHigh: c.cacheWriteHigh,
+      source: 'custom',
+    };
+  }
   return out;
 }
 
-// 按模型 ID 前缀找同族本地模型（如 'kimi-x' → 'kimi-k2.6'），用于价格估算
-function familyPriceOf(id) {
-  const dash = id.indexOf('-');
-  const family = dash > 0 ? id.slice(0, dash) : id;
-  const cands = Object.keys(MODELS).filter((m) => m.startsWith(family + '-'));
-  if (!cands.length) return null;
-  // 取价格最低的同族模型作为保守估算
-  return cands.map((m) => MODELS[m]).sort((a, b) => (a.in + a.out) - (b.in + b.out))[0];
-}
-
 /**
- * 用 GO_API_KEY 请求 {GO_BASE_URL}/models，把上游新增模型合入目录。
- * 失败时静默降级（保留本地表），不影响启动。
+ * 用 GO_API_KEY 请求 {GO_BASE_URL}/models，返回上游模型 ID 列表。
+ * 上游有、本地目录没有的模型存入 pendingUpstreamModels，由管理端提示用户手动配置。
+ * 失败时静默降级（pending 保持原样）。
  */
 async function syncModelsFromUpstream() {
   const config = require('./config');
@@ -110,19 +114,23 @@ async function syncModelsFromUpstream() {
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     const j = await res.json();
     const ids = (j.data || []).map((m) => m.id).filter(Boolean);
-    let added = 0;
-    for (const id of ids) {
-      if (MODELS[id] || remoteModels.has(id)) continue; // 本地已有 → 用本地价格
-      const fam = familyPriceOf(id);
-      remoteModels.set(id, fam
-        ? { endpoint: 'any', in: fam.in, out: fam.out, cacheRead: fam.cacheRead, cacheWrite: fam.cacheWrite, estimated: true }
-        : { endpoint: 'any', ...REMOTE_DEFAULT_PRICE });
-      added++;
-    }
-    return { ok: true, total: ids.length, added };
+    lastUpstreamIds = ids;
+    refreshPendingModels();
+    return { ok: true, total: ids.length, pending: pendingUpstreamModels.length };
   } catch (e) {
     return { ok: false, reason: e.message };
   }
 }
 
-module.exports = { MODELS, getModelCatalog, normalizeModel, isGloballyEnabled, syncModelsFromUpstream };
+// 用最近一次上游同步结果重算待配置列表（增删改模型后调用）
+function refreshPendingModels() {
+  const catalog = getModelCatalog();
+  pendingUpstreamModels = lastUpstreamIds.filter((id) => !catalog[id]);
+  return pendingUpstreamModels;
+}
+
+function getPendingModels() {
+  return pendingUpstreamModels;
+}
+
+module.exports = { MODELS, getModelCatalog, getPendingModels, refreshPendingModels, normalizeModel, isGloballyEnabled, syncModelsFromUpstream };

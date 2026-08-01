@@ -49,6 +49,23 @@ CREATE TABLE IF NOT EXISTS usage_logs (
 
 CREATE INDEX IF NOT EXISTS idx_usage_sub ON usage_logs (sub_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_time ON usage_logs (created_at);
+
+-- 用户自定义模型价格表（覆盖/新增内置默认价格，内置默认见 src/prices.js）
+CREATE TABLE IF NOT EXISTS model_prices (
+  id             TEXT PRIMARY KEY,
+  endpoint       TEXT NOT NULL DEFAULT 'chat/completions',
+  in_price       REAL NOT NULL DEFAULT 0,
+  out_price      REAL NOT NULL DEFAULT 0,
+  cache_read     REAL NOT NULL DEFAULT 0,
+  cache_write    REAL NOT NULL DEFAULT 0,
+  high_threshold INTEGER,
+  in_high        REAL,
+  out_high       REAL,
+  cache_read_high REAL,
+  cache_write_high REAL,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
 `);
 
 const now = () => new Date().toISOString();
@@ -222,10 +239,76 @@ function decorate(row) {
   return sub;
 }
 
+// ---------- 用户自定义模型价格 ----------
+
+function listModelPrices() {
+  return db.prepare('SELECT * FROM model_prices ORDER BY id').all().map(rowToModelPrice);
+}
+
+// 读取单个（不存在返回 null）
+function getModelPrice(id) {
+  const row = db.prepare('SELECT * FROM model_prices WHERE id = ?').get(id);
+  return row ? rowToModelPrice(row) : null;
+}
+
+// 创建/更新：未传字段保留原值（新建时以 defaults 兜底）
+function upsertModelPrice(id, fields, defaults = {}) {
+  const cur = getModelPrice(id);
+  const merged = {
+    endpoint: fields.endpoint ?? cur?.endpoint ?? defaults.endpoint ?? 'chat/completions',
+    in: fields.in ?? cur?.in ?? defaults.in ?? 0,
+    out: fields.out ?? cur?.out ?? defaults.out ?? 0,
+    cacheRead: fields.cacheRead ?? cur?.cacheRead ?? defaults.cacheRead ?? 0,
+    cacheWrite: fields.cacheWrite ?? cur?.cacheWrite ?? defaults.cacheWrite ?? 0,
+    highThreshold: fields.highThreshold ?? cur?.highThreshold ?? defaults.highThreshold ?? null,
+    inHigh: fields.inHigh ?? cur?.inHigh ?? defaults.inHigh ?? null,
+    outHigh: fields.outHigh ?? cur?.outHigh ?? defaults.outHigh ?? null,
+    cacheReadHigh: fields.cacheReadHigh ?? cur?.cacheReadHigh ?? defaults.cacheReadHigh ?? null,
+    cacheWriteHigh: fields.cacheWriteHigh ?? cur?.cacheWriteHigh ?? defaults.cacheWriteHigh ?? null,
+  };
+  db.prepare(`
+    INSERT INTO model_prices (id, endpoint, in_price, out_price, cache_read, cache_write,
+      high_threshold, in_high, out_high, cache_read_high, cache_write_high, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      endpoint = excluded.endpoint, in_price = excluded.in_price, out_price = excluded.out_price,
+      cache_read = excluded.cache_read, cache_write = excluded.cache_write,
+      high_threshold = excluded.high_threshold, in_high = excluded.in_high, out_high = excluded.out_high,
+      cache_read_high = excluded.cache_read_high, cache_write_high = excluded.cache_write_high,
+      updated_at = excluded.updated_at
+  `).run(
+    id, merged.endpoint, merged.in, merged.out, merged.cacheRead, merged.cacheWrite,
+    merged.highThreshold, merged.inHigh, merged.outHigh, merged.cacheReadHigh, merged.cacheWriteHigh,
+    now(), now()
+  );
+  return getModelPrice(id);
+}
+
+function deleteModelPrice(id) {
+  db.prepare('DELETE FROM model_prices WHERE id = ?').run(id);
+}
+
+function rowToModelPrice(row) {
+  return {
+    id: row.id,
+    endpoint: row.endpoint,
+    in: row.in_price,
+    out: row.out_price,
+    cacheRead: row.cache_read,
+    cacheWrite: row.cache_write,
+    highThreshold: row.high_threshold,
+    inHigh: row.in_high,
+    outHigh: row.out_high,
+    cacheReadHigh: row.cache_read_high,
+    cacheWriteHigh: row.cache_write_high,
+  };
+}
+
 module.exports = {
   db,
   createSubscription, getSubscriptionByKey, getSubscriptionById,
   listSubscriptions, updateSubscription, deleteSubscription, resetUsage,
   addUsage, countRequestsToday, usageLogs, usageSince, stats,
+  listModelPrices, getModelPrice, upsertModelPrice, deleteModelPrice,
   parseModelsField,
 };
