@@ -278,9 +278,9 @@ textarea { resize: vertical; min-height: 60px; }
 .seg button.active { background: var(--accent); color: var(--accent-text); }
 #trendChart { display: flex; align-items: flex-end; gap: 3px; height: 190px; padding: 24px 2px 0; overflow-x: auto; }
 #trendChart.few { justify-content: center; gap: 8px; }
-.trend-col { flex: 1 1 0; min-width: 14px; height: 100%; display: flex; flex-direction: column; cursor: pointer; position: relative; }
+.trend-col { flex: 1 1 0; min-width: 14px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; cursor: pointer; position: relative; }
 #trendChart.few .trend-col { flex: 0 0 44px; }
-.trend-stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; height: 100%; min-height: 2px; background: var(--surface-2); border-radius: 2px 2px 0 0; overflow: hidden; }
+.trend-stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; height: auto; min-height: 2px; background: var(--surface-2); border-radius: 2px 2px 0 0; overflow: hidden; }
 .trend-seg { width: 100%; min-height: 1px; }
 .trend-val { display: none; position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); padding: 0 4px; white-space: nowrap; z-index: 3; }
 #trendChart.few .trend-val { display: block; background: transparent; border: none; }
@@ -1112,7 +1112,7 @@ function renderTrend() {
     const x = trendState.gran === 'hour' ? b.key.slice(5, 16) : b.key.slice(5);
     return '<div class="trend-col' + (trendState.sel === b.key ? ' sel' : '') + '" data-bucket="' + esc(b.key) + '" title="' + esc(b.key) + '｜$' + fmt(b.cost, 4) + '｜' + b.req + ' 次请求（点击查看明细）">' +
       '<div class="trend-val">$' + fmt(b.cost, 2) + '</div>' +
-      '<div class="trend-stack">' + segHtml + '</div>' +
+      '<div class="trend-stack" style="height:' + (b.cost / maxCost * 100).toFixed(2) + '%;">' + segHtml + '</div>' +
       (i % labelEvery === 0 ? '<div class="trend-x">' + esc(x) + '</div>' : '<div class="trend-x">&nbsp;</div>') +
       '</div>';
   }).join('');
