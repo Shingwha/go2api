@@ -3,229 +3,1195 @@
 /**
  * Web 管理控制台（单页，无外部依赖，中文界面）。
  * 认证：请求头 Authorization: Bearer <ADMIN_API_KEY>
+ *
+ * 设计：无圆角 / 简洁淡雅 / 深浅色 / 侧边栏导航 / 卡片网格 / 移动端抽屉。
  */
 
 const HTML = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
 <title>Go2API 管理控制台</title>
 <style>
-:root { color-scheme: light dark; }
-body { font-family: system-ui, sans-serif; margin: 0; background: #f5f6f8; color: #1c1e21; }
-.dark body { background: #14161a; color: #e8eaed; }
-header { background: #0b0d10; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
-header h1 { font-size: 18px; margin: 0; flex: 1; }
-main { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
-.card { background: #fff; border-radius: 10px; padding: 18px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.dark .card { background: #1c1f24; }
-h2 { font-size: 16px; margin: 0 0 12px; }
+/* ============ 主题变量 ============ */
+:root {
+  color-scheme: light dark;
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f5f5f5;
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+  --text: #1a1a1a;
+  --text-2: #525252;
+  --text-3: #737373;
+  --accent: #1a1a1a;
+  --accent-text: #ffffff;
+  --accent-hover: #333333;
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
+  --amber: #b45309;
+  --amber-bg: #fffbeb;
+  --shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.dark {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-2: #1c1c1c;
+  --border: #262626;
+  --border-strong: #404040;
+  --text: #ededed;
+  --text-2: #a3a3a3;
+  --text-3: #737373;
+  --accent: #ededed;
+  --accent-text: #0a0a0a;
+  --accent-hover: #d4d4d4;
+  --green: #4ade80;
+  --green-bg: #052e16;
+  --red: #f87171;
+  --red-bg: #450a0a;
+  --amber: #fbbf24;
+  --amber-bg: #422006;
+  --shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+
+/* ============ 基础 ============ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 14px;
+  /* 防 iOS 聚焦放大 */
+}
+input, select, textarea { font-size: 16px; }
+@media (min-width: 769px) { input, select, textarea { font-size: 14px; } }
+.mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; }
+.logo-mark {
+  display: inline-block;
+  width: 14px; height: 14px;
+  background: var(--accent);
+  margin-right: 2px;
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ============ 布局 ============ */
+.app { display: flex; min-height: 100vh; }
+
+/* 侧边栏 */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0; bottom: 0; left: 0;
+  z-index: 50;
+}
+.sidebar-brand {
+  padding: 18px 20px;
+  font-size: 16px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-nav { flex: 1; padding: 8px; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 2px;
+  color: var(--text-2);
+  cursor: pointer;
+  border: 1px solid transparent;
+  min-height: 40px;
+  transition: background .12s, color .12s;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active { background: var(--surface-2); color: var(--text); border-color: var(--border); font-weight: 600; }
+.nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sidebar-foot {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.theme-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  min-height: 40px;
+}
+.theme-toggle:hover { background: var(--surface-2); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; }
+
+/* 主内容 */
+.main { flex: 1; margin-left: 220px; min-width: 0; display: flex; flex-direction: column; }
+.content { padding: 28px 32px 48px; max-width: 1200px; width: 100%; }
+.page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.page-title { font-size: 20px; font-weight: 700; margin: 0; }
+.page-sub { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+.hidden { display: none !important; }
+
+/* 移动端顶栏 */
+.mobilebar {
+  display: none;
+  position: sticky; top: 0; z-index: 40;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+  height: 52px;
+  align-items: center;
+  gap: 12px;
+}
+.icon-btn {
+  background: transparent; border: 1px solid transparent;
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text);
+}
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn svg { width: 20px; height: 20px; }
+.mobilebar-title { font-size: 16px; font-weight: 700; flex: 1; }
+
+/* 遮罩（移动端抽屉） */
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 45;
+}
+
+/* ============ 组件 ============ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title { font-size: 13px; font-weight: 600; color: var(--text-3); margin: 0 0 14px; text-transform: uppercase; letter-spacing: .03em; }
+
+/* 统计卡片网格 */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+.stat .n { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+.stat .n .unit { font-size: 14px; font-weight: 500; color: var(--text-3); margin-left: 2px; }
+.stat .l { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.stat .sub { font-size: 11px; color: var(--text-3); margin-top: 6px; }
+
+/* 按钮 */
+.btn {
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  min-height: 36px;
+  font-size: 13px;
+  transition: background .12s, border-color .12s;
+}
+.btn:hover { background: var(--surface-2); }
+.btn-primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-danger { color: var(--red); border-color: var(--border-strong); }
+.btn-danger:hover { background: var(--red-bg); border-color: var(--red); }
+.btn-sm { padding: 5px 10px; min-height: 30px; font-size: 12px; }
+.btn-icon {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 10px; min-height: 32px;
+  background: transparent; border: 1px solid transparent; cursor: pointer; color: var(--text-2);
+  font-size: 12px;
+}
+.btn-icon:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.btn-icon svg { width: 13px; height: 13px; }
+.btn:disabled, .btn-icon:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 输入 */
+input, select, textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 0;
+  width: 100%;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 60px; }
+
+/* 表单网格 */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-field label { font-size: 12px; color: var(--text-3); font-weight: 500; }
+.form-field .hint { font-size: 11px; color: var(--text-3); }
+.form-section { margin-bottom: 18px; }
+.form-section-title { font-size: 12px; color: var(--text-3); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+
+/* 徽点 / 状态 */
+.dot { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; }
+.dot.ok { background: var(--green); }
+.dot.off { background: var(--text-3); }
+.dot.exp { background: var(--red); }
+.status-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
+
+/* chip 标签 */
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 11px; padding: 2px 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+
+/* 进度条 */
+.bar { height: 8px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); transition: width .3s; }
+.bar-fill.warn { background: var(--amber); }
+.bar-fill.over { background: var(--red); }
+
+/* key 文本 */
+.key-box { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); padding: 5px 8px; }
+.key-box .k { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* 表格 */
+.table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e4e6ea; white-space: nowrap; }
-.dark th, .dark td { border-color: #2a2e34; }
-th { color: #666; font-weight: 600; }
-.dark th { color: #9aa0a6; }
-input, select, textarea { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; color: inherit; }
-.dark input, .dark select, .dark textarea { background: #14161a; border-color: #3a3f46; }
-button { padding: 7px 14px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; font-size: 13px; }
-button.secondary { background: #6b7280; }
-button.danger { background: #dc2626; }
-button:disabled { opacity: .5; }
-.badge { padding: 2px 8px; border-radius: 99px; font-size: 12px; }
-.badge.active { background: #dcfce7; color: #166534; }
-.badge.disabled { background: #fee2e2; color: #991b1b; }
-.dark .badge.active { background: #14532d; color: #bbf7d0; }
-.dark .badge.disabled { background: #7f1d1d; color: #fecaca; }
-.mono { font-family: ui-monospace, monospace; font-size: 12px; }
-.key { max-width: 220px; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: bottom; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.stat { background: #f8fafc; border-radius: 8px; padding: 12px; text-align: center; }
-.dark .stat { background: #14161a; }
-.stat .n { font-size: 20px; font-weight: 700; }
-.stat .l { font-size: 12px; color: #666; }
-.dark .stat .l { color: #9aa0a6; }
-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; }
-form label { display: flex; flex-direction: column; font-size: 12px; color: #666; gap: 4px; }
-.dark form label { color: #9aa0a6; }
-#auth { max-width: 400px; margin: 80px auto; }
-#auth input { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
-.err { color: #dc2626; font-size: 13px; }
-.ok { color: #16a34a; font-size: 13px; }
-code { background: #f0f1f3; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-.dark code { background: #262a30; }
-.hidden { display: none; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-3); font-weight: 600; font-size: 12px; background: var(--surface-2); position: sticky; top: 0; }
+tbody tr:hover { background: var(--surface-2); }
+td .mono { font-size: 12px; }
+
+/* 订阅卡片网格 */
+.sub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.sub-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.sub-card:hover { border-color: var(--border-strong); }
+.sub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sub-name { font-weight: 600; font-size: 15px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-name:hover { text-decoration: underline; }
+.sub-body { display: flex; flex-direction: column; gap: 10px; }
+.usage-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+.usage-row .big { font-size: 15px; font-weight: 700; }
+.usage-row .dim { color: var(--text-3); }
+.meta-line { font-size: 12px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.sub-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.sub-actions { display: flex; gap: 2px; flex-wrap: wrap; }
+
+/* 空状态 */
+.empty { text-align: center; padding: 48px 20px; color: var(--text-3); }
+.empty svg { width: 40px; height: 40px; opacity: .4; margin-bottom: 12px; }
+
+/* ============ 抽屉 ============ */
+.drawer-mask {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 90;
+}
+.drawer-mask.open { display: block; }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 460px; max-width: 100vw;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 100;
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .2s ease;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.drawer-title { font-size: 16px; font-weight: 700; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
+.drawer-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+/* 模态 */
+.modal-mask {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 110;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-mask.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  width: 100%; max-width: 400px;
+}
+.modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 600; }
+.modal-body { padding: 20px; font-size: 14px; color: var(--text-2); }
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ============ Toast ============ */
+#toasts {
+  position: fixed; z-index: 200;
+  bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: calc(100vw - 40px);
+}
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  min-width: 200px;
+  animation: toastIn .18s ease;
+}
+.toast.ok { border-left: 3px solid var(--green); }
+.toast.err { border-left: 3px solid var(--red); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ============ 登录 ============ */
+.auth-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.auth-card { width: 100%; max-width: 380px; }
+.auth-card h1 { font-size: 22px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.auth-card p.sub { color: var(--text-3); font-size: 13px; margin: 0 0 20px; }
+.err-text { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 18px; }
+.key-result { margin-top: 14px; padding: 12px; background: var(--green-bg); border: 1px solid var(--green); font-size: 13px; }
+.key-result .k { font-family: ui-monospace, monospace; word-break: break-all; }
+
+/* ============ 模型分布柱状 ============ */
+.dist-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 12px; }
+.dist-name { width: 130px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.dist-bar { flex: 1; height: 18px; background: var(--surface-2); border: 1px solid var(--border); position: relative; min-width: 60px; }
+.dist-bar-fill { height: 100%; background: var(--accent); opacity: .85; }
+.dist-val { width: 70px; flex-shrink: 0; text-align: right; color: var(--text-3); font-family: ui-monospace, monospace; }
+
+/* ============ 响应式 ============ */
+@media (max-width: 1024px) {
+  .sidebar { transform: translateX(-100%); transition: transform .2s ease; box-shadow: 0 0 40px rgba(0,0,0,.3); }
+  .sidebar.open { transform: translateX(0); }
+  .main { margin-left: 0; }
+  .mobilebar { display: flex; }
+  .overlay.open { display: block; }
+  .content { padding: 20px 16px 40px; }
+}
+@media (max-width: 768px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .sub-grid { grid-template-columns: 1fr; }
+  .drawer { width: 100vw; }
+  #toasts { left: 12px; right: 12px; bottom: 12px; }
+  .toast { min-width: 0; }
+  .content { padding: 16px 12px 32px; }
+  .page-title { font-size: 18px; }
+  .form-grid { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>⚡ Go2API 管理控制台</h1>
-  <button class="secondary" onclick="logout()">退出</button>
-</header>
 
-<div id="auth" class="card">
-  <h2>管理员登录</h2>
-  <p style="font-size:13px;color:#666">输入 ADMIN_API_KEY（环境变量中配置，或见启动日志）</p>
-  <input type="password" id="adminKey" placeholder="ADMIN_API_KEY" autocomplete="off">
-  <button onclick="login()" style="width:100%">进入</button>
-  <div id="authErr" class="err"></div>
+<!-- ===== 登录页 ===== -->
+<div id="authView" class="auth-wrap hidden">
+  <div class="auth-card card">
+    <h1><span class="logo-mark"></span>Go2API</h1>
+    <p class="sub">管理控制台 · 请输入管理员密钥</p>
+    <div class="form-field">
+      <input type="password" id="adminKey" placeholder="ADMIN_API_KEY" autocomplete="off" autocapitalize="off">
+    </div>
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;margin-top:12px;min-height:40px">进入控制台</button>
+    <div id="authErr" class="err-text"></div>
+    <p class="sub" style="margin-top:16px">密钥为环境变量 <span class="mono" style="font-size:12px">ADMIN_API_KEY</span>，未设置时见启动日志。</p>
+  </div>
 </div>
 
-<main id="main" class="hidden">
-  <div class="card"><h2>总览</h2><div class="grid" id="stats"></div></div>
+<!-- ===== 主应用 ===== -->
+<div id="appView" class="hidden">
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand"><span class="logo-mark"></span>Go2API</div>
+    <nav class="sidebar-nav" id="navList">
+      <div class="nav-item" data-route="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        总览
+      </div>
+      <div class="nav-item" data-route="subs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8H3M21 16H3M7 4H3v16h4V4zm14 0h-4v16h4V4z"/></svg>
+        订阅
+      </div>
+      <div class="nav-item" data-route="usage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+        用量
+      </div>
+      <div class="nav-item" data-route="models">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        模型
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="theme-toggle" id="themeToggle">
+        <span style="display:flex;align-items:center;gap:10px">
+          <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg id="iconMoon" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span id="themeLabel">主题</span>
+        </span>
+        <span style="font-size:11px;color:var(--text-3)" id="themeMode">自动</span>
+      </button>
+    </div>
+  </aside>
+  <div class="overlay" id="overlay"></div>
 
-  <div class="card">
-    <h2>创建订阅</h2>
-    <form id="createForm">
-      <label>名称 *<input name="name" placeholder="如：朋友A" required></label>
-      <label>允许模型（留空=全部）<input name="models" placeholder="如: deepseek-v4-flash,kimi-k2.6"></label>
-      <label>额度（$，0=不限）<input name="quotaUsd" type="number" min="0" step="0.01" value="2"></label>
-      <label>请求数上限（0=不限）<input name="quotaRequests" type="number" min="0" value="0"></label>
-      <label>每分钟限流（0=不限）<input name="rpm" type="number" min="0" value="0"></label>
-      <label>每天限流（0=不限）<input name="rpd" type="number" min="0" value="0"></label>
-      <label>过期时间<input name="expiresAt" type="datetime-local"></label>
-      <label>备注<input name="note" placeholder="可选"></label>
-      <button type="submit">创建</button>
-    </form>
-  </div>
+  <!-- 主区 -->
+  <div class="main">
+    <!-- 移动端顶栏 -->
+    <div class="mobilebar">
+      <button class="icon-btn" id="menuBtn" aria-label="菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div class="mobilebar-title" id="mobilebarTitle">总览</div>
+      <button class="icon-btn" id="mobileTheme" aria-label="主题">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+    </div>
 
-  <div class="card">
-    <h2>订阅列表</h2>
-    <div style="overflow-x:auto"><table id="subsTable">
-      <thead><tr>
-        <th>ID</th><th>名称</th><th>API Key</th><th>状态</th><th>模型</th>
-        <th>额度 $</th><th>已用 $</th><th>请求</th><th>限流</th><th>过期</th><th>操作</th>
-      </tr></thead>
-      <tbody></tbody>
-    </table></div>
-  </div>
+    <div class="content">
+      <!-- 总览 -->
+      <section id="page-overview" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">总览</h1>
+            <div class="page-sub">订阅服务的整体用量与成本</div>
+          </div>
+          <button class="btn btn-primary" id="refreshOverviewBtn">刷新</button>
+        </div>
+        <div class="stat-grid" id="statsGrid"></div>
+        <div id="tokenInfo"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="overviewPanels">
+          <div class="card">
+            <div class="card-title">按模型成本分布</div>
+            <div id="distChart"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">订阅概要</div>
+            <div id="subSummary"></div>
+          </div>
+        </div>
+      </section>
 
-  <div class="card">
-    <h2>模型价格表（$ / 1M tokens）</h2>
-    <div style="overflow-x:auto"><table id="modelsTable">
-      <thead><tr><th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读取</th><th>缓存写入</th></tr></thead>
-      <tbody></tbody>
-    </table></div>
+      <!-- 订阅 -->
+      <section id="page-subs" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">订阅</h1>
+            <div class="page-sub">管理 API 订阅密钥、额度与限流</div>
+          </div>
+          <button class="btn btn-primary" id="newSubBtn">+ 新建订阅</button>
+        </div>
+        <div id="subsList"></div>
+      </section>
+
+      <!-- 用量 -->
+      <section id="page-usage" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">用量日志</h1>
+            <div class="page-sub">每条请求的记账记录</div>
+          </div>
+          <button class="btn btn-primary" id="refreshUsageBtn">刷新</button>
+        </div>
+        <div class="card" style="padding:14px 16px">
+          <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+            <div class="form-field">
+              <label>订阅</label>
+              <select id="fSub"><option value="">全部</option></select>
+            </div>
+            <div class="form-field">
+              <label>状态</label>
+              <select id="fStatus">
+                <option value="">全部</option>
+                <option value="ok">成功</option>
+                <option value="error">错误</option>
+                <option value="rejected">拒绝</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label>条数</label>
+              <select id="fLimit">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+              </select>
+            </div>
+            <div class="form-field" style="justify-content:flex-end">
+              <label>&nbsp;</label>
+              <button class="btn" id="applyUsageFilter">筛选</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap" id="usageTable"></div>
+        </div>
+      </section>
+
+      <!-- 模型 -->
+      <section id="page-models" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">模型与价格</h1>
+            <div class="page-sub">每 1M tokens 计价（美元）</div>
+          </div>
+          <div class="form-field" style="margin:0">
+            <input type="text" id="modelSearch" placeholder="搜索模型…" style="min-width:160px">
+          </div>
+        </div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap" id="modelsTable"></div>
+        </div>
+      </section>
+    </div>
   </div>
-</main>
+</div>
+</div>
+
+<!-- ===== 抽屉（创建/编辑订阅） ===== -->
+<div class="drawer-mask" id="drawerMask"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="drawer-title" id="drawerTitle">新建订阅</div>
+    <button class="icon-btn" id="drawerClose" aria-label="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body">
+    <input type="hidden" id="fId">
+    <div class="form-section">
+      <div class="form-section-title">基本信息</div>
+      <div class="form-grid">
+        <div class="form-field" style="grid-column:1/-1">
+          <label>名称 *</label>
+          <input id="fName" placeholder="如：朋友A">
+        </div>
+        <div class="form-field" style="grid-column:1/-1">
+          <label>允许模型</label>
+          <input id="fModels" placeholder="逗号分隔，留空 = 全部">
+          <span class="hint">如 deepseek-v4-flash, kimi-k2.6</span>
+        </div>
+      </div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">额度与限流</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>美元额度</label>
+          <input id="fQuotaUsd" type="number" min="0" step="0.01" placeholder="0 = 不限">
+        </div>
+        <div class="form-field">
+          <label>请求数上限</label>
+          <input id="fQuotaReq" type="number" min="0" placeholder="0 = 不限">
+        </div>
+        <div class="form-field">
+          <label>每分钟限流 RPM</label>
+          <input id="fRpm" type="number" min="0" placeholder="0 = 不限">
+        </div>
+        <div class="form-field">
+          <label>每天限流 RPD</label>
+          <input id="fRpd" type="number" min="0" placeholder="0 = 不限">
+        </div>
+      </div>
+    </div>
+    <div class="form-section">
+      <div class="form-section-title">时间与备注</div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>过期时间</label>
+          <input id="fExpires" type="datetime-local">
+        </div>
+        <div class="form-field" style="grid-column:1/-1">
+          <label>备注</label>
+          <textarea id="fNote" placeholder="可选"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" id="drawerCancel">取消</button>
+    <button class="btn btn-primary" id="drawerSave">保存</button>
+  </div>
+</div>
+
+<!-- ===== 详情抽屉（订阅用量历史） ===== -->
+<div class="drawer-mask" id="detailMask"></div>
+<div class="drawer" id="detailDrawer" style="width:480px">
+  <div class="drawer-head">
+    <div class="drawer-title" id="detailTitle">订阅详情</div>
+    <button class="icon-btn" id="detailClose" aria-label="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body" id="detailBody"></div>
+</div>
+
+<!-- ===== 模态确认 ===== -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <div class="modal-head" id="modalTitle">确认</div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <button class="btn" id="modalCancel">取消</button>
+      <button class="btn btn-danger" id="modalOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Toast ===== -->
+<div id="toasts"></div>
 
 <script>
-let TOKEN = localStorage.getItem('go2api_admin_key') || '';
+'use strict';
 
-function login() {
-  TOKEN = document.getElementById('adminKey').value.trim();
-  localStorage.setItem('go2api_admin_key', TOKEN);
-  checkAuth();
+// ============ 全局状态 ============
+const state = {
+  token: localStorage.getItem('go2api_admin_key') || '',
+  route: 'overview',
+  stats: null,
+  subs: [],
+  models: {},
+  usage: [],
+  detailSub: null,
+  detailUsage: [],
+  theme: localStorage.getItem('go2api_theme') || 'auto', // auto | light | dark
+};
+
+// ============ 工具 ============
+function $(s) { return document.querySelector(s); }
+function $$(s) { return document.querySelectorAll(s); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmt(n, d = 4) { return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: d }); }
+function money(n) { return '$' + fmt(n, 4); }
+function shortTime(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return d.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
-function logout() { TOKEN = ''; localStorage.removeItem('go2api_admin_key'); showAuth(); }
+function shortKey(k) {
+  if (!k) return '';
+  return k.length > 26 ? k.slice(0, 14) + '…' + k.slice(-8) : k;
+}
 
 async function api(path, opts = {}) {
   const r = await fetch(path, {
     ...opts,
-    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN, ...(opts.headers || {}) },
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + state.token, ...(opts.headers || {}) },
   });
   if (r.status === 401) { showAuth(); throw new Error('unauthorized'); }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.status);
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
   return j;
 }
 
-function fmt(n) { return Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 4 }); }
-function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+// ============ Toast ============
+function toast(msg, type = 'ok') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .2s'; setTimeout(() => el.remove(), 200); }, 2800);
+}
 
-function showAuth() { document.getElementById('main').classList.add('hidden'); document.getElementById('auth').classList.remove('hidden'); }
-async function checkAuth() {
+// ============ 确认弹窗 ============
+function confirm2(title, body) {
+  return new Promise((resolve) => {
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = body;
+    $('#modalMask').classList.add('open');
+    const ok = () => { cleanup(); resolve(true); };
+    const cancel = () => { cleanup(); resolve(false); };
+    function cleanup() {
+      $('#modalMask').classList.remove('open');
+      $('#modalOk').removeEventListener('click', ok);
+      $('#modalCancel').removeEventListener('click', cancel);
+    }
+    $('#modalOk').addEventListener('click', ok);
+    $('#modalCancel').addEventListener('click', cancel);
+  });
+}
+
+// ============ 主题 ============
+function applyTheme() {
+  const prefersDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const isDark = state.theme === 'dark' || (state.theme === 'auto' && prefersDark);
+  document.documentElement.classList.toggle('dark', isDark);
+  $('#iconSun').classList.toggle('hidden', isDark);
+  $('#iconMoon').classList.toggle('hidden', !isDark);
+  let label = '自动';
+  if (state.theme === 'light') label = '浅色';
+  else if (state.theme === 'dark') label = '深色';
+  $('#themeMode').textContent = label;
+  $('#themeLabel').textContent = label;
+}
+function cycleTheme() {
+  state.theme = state.theme === 'auto' ? 'light' : state.theme === 'light' ? 'dark' : 'auto';
+  localStorage.setItem('go2api_theme', state.theme);
+  applyTheme();
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.theme === 'auto') applyTheme(); });
+
+// ============ 认证 ============
+function showAuth() {
+  $('#appView').classList.add('hidden');
+  $('#authView').classList.remove('hidden');
+  $('#adminKey').focus();
+}
+function showApp() {
+  $('#authView').classList.add('hidden');
+  $('#appView').classList.remove('hidden');
+}
+async function doLogin() {
+  const key = $('#adminKey').value.trim();
+  if (!key) { $('#authErr').textContent = '请输入密钥'; return; }
+  state.token = key;
+  $('#loginBtn').disabled = true;
+  $('#authErr').textContent = '';
   try {
     await api('/admin/stats');
-    document.getElementById('auth').classList.add('hidden');
-    document.getElementById('main').classList.remove('hidden');
+    localStorage.setItem('go2api_admin_key', key);
+    showApp();
+    router();
     refresh();
   } catch (e) {
-    document.getElementById('authErr').textContent = '认证失败：' + e.message;
+    $('#authErr').textContent = '认证失败：' + e.message;
+    state.token = '';
+  } finally {
+    $('#loginBtn').disabled = false;
+  }
+}
+function logout() {
+  state.token = '';
+  localStorage.removeItem('go2api_admin_key');
+  showAuth();
+}
+
+// ============ 路由 ============
+function go(route) {
+  state.route = route;
+  location.hash = '#/' + route;
+  $$('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.route === route));
+  ['overview', 'subs', 'usage', 'models'].forEach((r) => {
+    $('#page-' + r).classList.toggle('hidden', r !== route);
+  });
+  const titles = { overview: '总览', subs: '订阅', usage: '用量', models: '模型' };
+  $('#mobilebarTitle').textContent = titles[route];
+  closeSidebarMobile();
+  if (route === 'models') renderModels();
+  if (route === 'usage') loadUsage();
+}
+function router() {
+  const h = location.hash.replace('#/', '');
+  if (['overview', 'subs', 'usage', 'models'].includes(h)) go(h);
+  else go('overview');
+}
+window.addEventListener('hashchange', router);
+
+// ============ 移动端侧边栏 ============
+function openSidebarMobile() { $('#sidebar').classList.add('open'); $('#overlay').classList.add('open'); }
+function closeSidebarMobile() { $('#sidebar').classList.remove('open'); $('#overlay').classList.remove('open'); }
+
+// ============ 数据加载 ============
+async function refresh(showToast = false) {
+  try {
+    const [stats, subs, models] = await Promise.all([api('/admin/stats'), api('/admin/subs'), api('/admin/models')]);
+    state.stats = stats; state.subs = subs.subscriptions; state.models = models.models;
+    renderStats();
+    renderSubs();
+    if (state.route === 'models') renderModels();
+    if (showToast) toast('已刷新', 'ok');
+  } catch (e) {
+    toast('加载失败：' + e.message, 'err');
   }
 }
 
-async function refresh() {
-  await Promise.all([loadStats(), loadSubs(), loadModels()]);
-}
-
-async function loadStats() {
-  const s = await api('/admin/stats');
-  const el = document.getElementById('stats');
-  el.innerHTML = [
-    ['累计请求', fmt(s.total.total_requests)],
-    ['累计成本 $', fmt(s.total.total_cost)],
-    ['今日请求', fmt(s.today.requests)],
-    ['今日成本 $', fmt(s.today.cost)],
-    ['输入 tokens', fmt(s.total.total_input)],
-    ['输出 tokens', fmt(s.total.total_output)],
-  ].map(([l, n]) => '<div class="stat"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>').join('');
-}
-
-async function loadSubs() {
-  const { subscriptions } = await api('/admin/subs');
-  const tbody = document.querySelector('#subsTable tbody');
-  tbody.innerHTML = subscriptions.map((s) => {
-    const models = s.modelsList === '*' ? '全部' : esc(s.modelsList.join(', '));
-    const expire = s.expires_at ? new Date(s.expires_at).toLocaleString() : '—';
-    const quota = s.quota_usd > 0 ? '$' + fmt(s.quota_usd) : '∞';
-    const rl = [s.rpm ? s.rpm + '/min' : '', s.rpd ? s.rpd + '/day' : ''].filter(Boolean).join(' ') || '—';
-    return '<tr>' +
-      '<td>' + s.id + '</td>' +
-      '<td>' + esc(s.name) + '</td>' +
-      '<td><span class="mono key" title="' + esc(s.key) + '">' + esc(s.key) + '</span> ' +
-        '<button class="secondary" style="padding:2px 8px;font-size:11px" onclick="copyKey(\\'' + esc(s.key) + '\\')">复制</button></td>' +
-      '<td><span class="badge ' + s.status + '">' + s.status + '</span></td>' +
-      '<td title="' + models + '">' + (models.length > 20 ? models.slice(0, 20) + '…' : models) + '</td>' +
-      '<td>' + quota + '</td>' +
-      '<td>$' + fmt(s.used_usd) + ' <span style="color:#888">/' + fmt(s.used_requests) + ' req</span></td>' +
-      '<td>' + rl + '</td>' +
-      '<td>' + expire + '</td>' +
-      '<td>' +
-        '<button class="secondary" style="padding:3px 8px;font-size:11px" onclick="toggleSub(' + s.id + ')">' + (s.status === 'active' ? '禁用' : '启用') + '</button> ' +
-        '<button class="secondary" style="padding:3px 8px;font-size:11px" onclick="resetSub(' + s.id + ')">重置</button> ' +
-        '<button class="danger" style="padding:3px 8px;font-size:11px" onclick="delSub(' + s.id + ')">删除</button>' +
-      '</td></tr>';
-  }).join('');
-}
-
-async function loadModels() {
-  const { models } = await api('/admin/models');
-  const tbody = document.querySelector('#modelsTable tbody');
-  tbody.innerHTML = Object.entries(models).map(([id, m]) =>
-    '<tr><td class="mono">' + id + '</td><td>' + m.endpoint + '</td>' +
-    '<td>' + m.in + '</td><td>' + m.out + '</td><td>' + m.cacheRead + '</td><td>' + (m.cacheWrite || '—') + '</td></tr>'
+// ============ 渲染：统计 ============
+function renderStats() {
+  const s = state.stats;
+  if (!s) return;
+  const cards = [
+    { n: fmt(s.total.total_requests, 0), l: '累计请求', sub: '历史总量' },
+    { n: money(s.total.total_cost), l: '累计成本', sub: '美元' },
+    { n: fmt(s.today.requests, 0), l: '今日请求', sub: '当天累计' },
+    { n: money(s.today.cost), l: '今日成本', sub: '美元' },
+  ];
+  $('#statsGrid').innerHTML = cards.map((c) =>
+    '<div class="stat"><div class="n">' + c.n + '</div><div class="l">' + c.l + '</div><div class="sub">' + c.sub + '</div></div>'
   ).join('');
+  // token 副信息
+  const tok = '<div class="card" style="padding:14px 20px"><div style="display:flex;flex-wrap:wrap;gap:12px 32px;font-size:13px;color:var(--text-2)">' +
+    '<span>输入 tokens <b class="mono" style="color:var(--text)">' + fmt(s.total.total_input, 0) + '</b></span>' +
+    '<span>输出 tokens <b class="mono" style="color:var(--text)">' + fmt(s.total.total_output, 0) + '</b></span>' +
+    '<span>缓存 tokens <b class="mono" style="color:var(--text)">' + fmt(s.total.total_cached, 0) + '</b></span>' +
+    '</div></div>';
+  $('#tokenInfo').innerHTML = tok;
+  // 模型分布
+  const byModel = (s.byModel || []).slice(0, 8);
+  const maxCost = byModel.length ? Math.max(...byModel.map((m) => m.cost)) : 0;
+  const dist = byModel.length
+    ? byModel.map((m) =>
+      '<div class="dist-row"><div class="dist-name" title="' + esc(m.model) + '">' + esc(m.model) + '</div>' +
+      '<div class="dist-bar"><div class="dist-bar-fill" style="width:' + (maxCost ? (m.cost / maxCost * 100) : 0).toFixed(1) + '%"></div></div>' +
+      '<div class="dist-val">$' + fmt(m.cost, 2) + '</div></div>'
+    ).join('')
+    : '<div class="empty">暂无数据</div>';
+  $('#distChart').innerHTML = dist;
+  // 订阅概要
+  const activeN = state.subs.filter((x) => x.status === 'active' && !x.expired).length;
+  const disabledN = state.subs.filter((x) => x.status === 'disabled').length;
+  const expiredN = state.subs.filter((x) => x.expired).length;
+  $('#subSummary').innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:10px">' +
+    summaryRow('订阅总数', state.subs.length) +
+    summaryRow('正常', activeN, 'var(--green)') +
+    summaryRow('已停用', disabledN) +
+    summaryRow('已过期', expiredN, 'var(--red)') +
+    '</div>';
+}
+function summaryRow(l, v, color) {
+  return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-2);font-size:13px">' + l + '</span><b style="color:' + (color || 'var(--text)') + '">' + v + '</b></div>';
 }
 
-function copyKey(k) { navigator.clipboard.writeText(k).then(() => alert('已复制: ' + k)); }
-async function toggleSub(id) {
-  const { subscriptions } = await api('/admin/subs');
-  const s = subscriptions.find((x) => x.id === id);
-  await api('/admin/subs/' + id, { method: 'PATCH', body: JSON.stringify({ status: s.status === 'active' ? 'disabled' : 'active' }) });
-  loadSubs();
+// ============ 渲染：订阅卡片 ============
+function renderSubs() {
+  const el = $('#subsList');
+  if (!state.subs.length) {
+    el.innerHTML = '<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12"/><path d="M3 10h18"/></svg><div>暂无订阅，点击「新建订阅」开始</div></div>';
+    return;
+  }
+  el.innerHTML = '<div class="sub-grid">' + state.subs.map(renderSubCard).join('') + '</div>';
 }
-async function resetSub(id) { await api('/admin/subs/' + id + '/reset', { method: 'POST' }); loadSubs(); }
-async function delSub(id) { if (confirm('确认删除订阅 #' + id + '？')) { await api('/admin/subs/' + id, { method: 'DELETE' }); loadSubs(); } }
+function renderSubCard(s) {
+  const statusTag = s.expired
+    ? '<span class="status-tag"><span class="dot exp"></span>已过期</span>'
+    : s.status === 'active'
+    ? '<span class="status-tag"><span class="dot ok"></span>正常</span>'
+    : '<span class="status-tag"><span class="dot off"></span>已停用</span>';
 
-document.getElementById('createForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const body = { name: fd.get('name') };
-  if (fd.get('models')) body.models = fd.get('models').split(',').map((s) => s.trim()).filter(Boolean);
-  if (fd.get('quotaUsd')) body.quotaUsd = parseFloat(fd.get('quotaUsd'));
-  if (fd.get('quotaRequests')) body.quotaRequests = parseInt(fd.get('quotaRequests'), 10);
-  if (fd.get('rpm')) body.rpm = parseInt(fd.get('rpm'), 10);
-  if (fd.get('rpd')) body.rpd = parseInt(fd.get('rpd'), 10);
-  if (fd.get('expiresAt')) body.expiresAt = new Date(fd.get('expiresAt')).toISOString();
-  if (fd.get('note')) body.note = fd.get('note');
-  const { subscription } = await api('/admin/subs', { method: 'POST', body: JSON.stringify(body) });
-  alert('创建成功！API Key: ' + subscription.key);
-  e.target.reset();
-  loadSubs();
+  // 用量进度条
+  let barHtml = '';
+  if (s.quota_usd > 0) {
+    const pct = Math.min(100, (s.used_usd / s.quota_usd) * 100);
+    const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
+    barHtml = '<div class="bar" style="margin-top:6px"><div class="bar-fill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div></div>';
+  } else if (s.quota_requests > 0) {
+    const pct = Math.min(100, (s.used_requests / s.quota_requests) * 100);
+    const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
+    barHtml = '<div class="bar" style="margin-top:6px"><div class="bar-fill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div></div>';
+  }
+
+  // 用量数值行
+  const usedBig = s.quota_usd > 0
+    ? '<span class="big">$' + fmt(s.used_usd, 4) + '</span> <span class="dim">/ $' + fmt(s.quota_usd) + '</span>'
+    : '<span class="big">' + fmt(s.used_requests, 0) + '</span> <span class="dim">次' + (s.quota_requests > 0 ? ' / ' + fmt(s.quota_requests, 0) : '') + '</span>';
+
+  // 限额信息行
+  const metas = [];
+  if (s.quota_usd > 0) metas.push('请求 ' + fmt(s.used_requests, 0));
+  if (s.rpm) metas.push(s.rpm + ' RPM');
+  if (s.rpd) metas.push(s.rpd + '/天');
+  if (s.expires_at) metas.push('到期 ' + shortTime(s.expires_at));
+
+  // 模型 chips
+  const models = s.modelsList === '*' ? '全部模型' : s.modelsList;
+  const chips = models === '全部模型'
+    ? '<span class="chip">全部模型</span>'
+    : '<div class="chips">' + s.modelsList.slice(0, 4).map((m) => '<span class="chip">' + esc(m) + '</span>').join('') + (s.modelsList.length > 4 ? '<span class="chip">+' + (s.modelsList.length - 4) + '</span>' : '') + '</div>';
+
+  return '<div class="sub-card">' +
+    '<div class="sub-head">' +
+      '<div class="sub-name" data-act="detail" data-id="' + s.id + '" title="点击查看详情">' + esc(s.name) + '</div>' +
+      statusTag +
+    '</div>' +
+    '<div class="sub-body">' +
+      '<div><div class="usage-row">' + usedBig + '</div>' + barHtml + '</div>' +
+      '<div class="meta-line">' + (metas.length ? metas.map((m) => '<span>' + esc(m) + '</span>').join('') : '<span>无限制</span>') + '</div>' +
+      chips +
+    '</div>' +
+    '<div class="sub-foot">' +
+      '<div class="key-box" style="flex:1;min-width:0" title="' + esc(s.key) + '">' +
+        '<span class="k">' + esc(shortKey(s.key)) + '</span>' +
+        '<button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '">复制</button>' +
+      '</div>' +
+      '<div class="sub-actions">' +
+        '<button class="btn-icon" data-act="edit" data-id="' + s.id + '">编辑</button>' +
+        '<button class="btn-icon" data-act="rotate" data-id="' + s.id + '" title="生成新 key，旧 key 失效">换Key</button>' +
+        '<button class="btn-icon" data-act="reset" data-id="' + s.id + '">重置</button>' +
+        '<button class="btn-icon" data-act="del" data-id="' + s.id + '" style="color:var(--red)">删除</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ============ 渲染：模型表 ============
+let modelCache = null;
+function renderModels() {
+  if (!modelCache) modelCache = Object.entries(state.models).sort((a, b) => a[0].localeCompare(b[0]));
+  const q = ($('#modelSearch').value || '').trim().toLowerCase();
+  const rows = modelCache.filter(([id]) => !q || id.toLowerCase().includes(q));
+  const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e;
+  $('#modelsTable').innerHTML = '<table><thead><tr>' +
+    '<th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读</th><th>缓存写</th>' +
+    '</tr></thead><tbody>' +
+    (rows.length ? rows.map(([id, m]) =>
+      '<tr><td class="mono">' + esc(id) + '</td><td>' + esc(epLabel(m.endpoint)) + '</td>' +
+      '<td class="mono">' + m.in + '</td><td class="mono">' + m.out + '</td>' +
+      '<td class="mono">' + m.cacheRead + '</td><td class="mono">' + (m.cacheWrite || '—') + '</td></tr>'
+    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:32px">无匹配模型</td></tr>') +
+    '</tbody></table>';
+}
+
+// ============ 渲染：用量日志 ============
+async function loadUsage() {
+  try {
+    const sub = $('#fSub').value;
+    const limit = $('#fLimit').value;
+    const u = await api('/admin/usage?limit=' + limit + (sub ? '&sub_id=' + sub : ''));
+    state.usage = u.usage;
+    // 填充订阅下拉
+    if (!$('#fSub').dataset.filled) {
+      $('#fSub').innerHTML = '<option value="">全部</option>' + state.subs.map((s) => '<option value="' + s.id + '">' + esc(s.name) + ' #' + s.id + '</option>').join('');
+      $('#fSub').dataset.filled = '1';
+    }
+    renderUsage();
+  } catch (e) {
+    toast('加载用量失败：' + e.message, 'err');
+  }
+}
+function renderUsage() {
+  let rows = state.usage;
+  const st = $('#fStatus').value;
+  if (st) rows = rows.filter((r) => r.status === st);
+  $('#usageTable').innerHTML = '<table><thead><tr>' +
+    '<th>时间</th><th>订阅</th><th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存</th><th>成本</th><th>状态</th>' +
+    '</tr></thead><tbody>' +
+    (rows.length ? rows.map((r) => {
+      const sub = state.subs.find((x) => x.id === r.sub_id);
+      const stColor = r.status === 'ok' ? 'var(--green)' : 'var(--red)';
+      return '<tr>' +
+        '<td>' + shortTime(r.created_at) + '</td>' +
+        '<td>' + (sub ? esc(sub.name) : '#' + r.sub_id) + '</td>' +
+        '<td class="mono">' + esc(r.model) + '</td>' +
+        '<td>' + esc(r.endpoint) + '</td>' +
+        '<td class="mono">' + fmt(r.input_tokens, 0) + '</td>' +
+        '<td class="mono">' + fmt(r.output_tokens, 0) + '</td>' +
+        '<td class="mono">' + fmt(r.cached_tokens, 0) + '</td>' +
+        '<td class="mono">$' + fmt(r.cost_usd, 6) + (r.estimated ? '*' : '') + '</td>' +
+        '<td style="color:' + stColor + '">' + esc(r.status) + '</td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-3);padding:32px">暂无记录</td></tr>') +
+    '</tbody></table>';
+}
+
+// ============ 抽屉：新建/编辑 ============
+function openDrawer(sub) {
+  $('#drawerTitle').textContent = sub ? '编辑订阅' : '新建订阅';
+  $('#fId').value = sub ? sub.id : '';
+  $('#fName').value = sub ? sub.name : '';
+  $('#fModels').value = (sub && sub.modelsList !== '*') ? sub.modelsList.join(', ') : '';
+  $('#fQuotaUsd').value = sub ? (sub.quota_usd || '') : '';
+  $('#fQuotaReq').value = sub ? (sub.quota_requests || '') : '';
+  $('#fRpm').value = sub ? (sub.rpm || '') : '';
+  $('#fRpd').value = sub ? (sub.rpd || '') : '';
+  if (sub && sub.expires_at) {
+    const d = new Date(sub.expires_at);
+    const pad = (n) => String(n).padStart(2, '0');
+    $('#fExpires').value = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  } else {
+    $('#fExpires').value = '';
+  }
+  $('#fNote').value = sub ? (sub.note || '') : '';
+  $('#drawerMask').classList.add('open');
+  $('#drawer').classList.add('open');
+}
+function closeDrawer() {
+  $('#drawerMask').classList.remove('open');
+  $('#drawer').classList.remove('open');
+}
+async function saveDrawer() {
+  const id = $('#fId').value;
+  const body = {
+    name: $('#fName').value.trim(),
+    models: $('#fModels').value.split(',').map((s) => s.trim()).filter(Boolean),
+    quotaUsd: parseFloat($('#fQuotaUsd').value) || 0,
+    quotaRequests: parseInt($('#fQuotaReq').value, 10) || 0,
+    rpm: parseInt($('#fRpm').value, 10) || 0,
+    rpd: parseInt($('#fRpd').value, 10) || 0,
+    expiresAt: $('#fExpires').value ? new Date($('#fExpires').value).toISOString() : null,
+    note: $('#fNote').value,
+  };
+  if (!body.name) { toast('请填写名称', 'err'); return; }
+  if (body.models.length === 0) delete body.models; // 留空 = 全部
+  $('#drawerSave').disabled = true;
+  try {
+    if (id) {
+      await api('/admin/subs/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+      toast('已保存', 'ok');
+    } else {
+      const { subscription } = await api('/admin/subs', { method: 'POST', body: JSON.stringify(body) });
+      toast('已创建，密钥已生成', 'ok');
+      // 展示新 key
+      setTimeout(() => showNewKey(subscription.key), 200);
+    }
+    closeDrawer();
+    refresh();
+  } catch (e) {
+    toast('保存失败：' + e.message, 'err');
+  } finally {
+    $('#drawerSave').disabled = false;
+  }
+}
+function showNewKey(key) {
+  $('#modalTitle').textContent = '订阅密钥';
+  $('#modalBody').innerHTML = '<div>新订阅的 API Key（请妥善保存，仅完整显示一次）：</div>' +
+    '<div class="key-result" style="margin-top:10px"><div class="k">' + esc(key) + '</div></div>' +
+    '<div style="margin-top:10px;font-size:12px;color:var(--text-3)">在订阅卡片上可随时复制。</div>';
+  $('#modalOk').textContent = '复制';
+  $('#modalMask').classList.add('open');
+  const ok = () => { cleanup(); navigator.clipboard.writeText(key).then(() => toast('已复制', 'ok')); };
+  const cancel = () => { cleanup(); };
+  function cleanup() {
+    $('#modalMask').classList.remove('open');
+    $('#modalOk').textContent = '确认';
+    $('#modalOk').removeEventListener('click', ok);
+    $('#modalCancel').removeEventListener('click', cancel);
+  }
+  $('#modalOk').addEventListener('click', ok);
+  $('#modalCancel').addEventListener('click', cancel);
+}
+
+// ============ 详情抽屉 ============
+async function openDetail(id) {
+  try {
+    const { subscription, usage } = await api('/admin/subs/' + id);
+    state.detailSub = subscription; state.detailUsage = usage;
+    $('#detailTitle').textContent = subscription.name;
+    $('#detailBody').innerHTML = renderDetail(subscription, usage);
+    $('#detailMask').classList.add('open');
+    $('#detailDrawer').classList.add('open');
+  } catch (e) {
+    toast('加载详情失败：' + e.message, 'err');
+  }
+}
+function closeDetail() {
+  $('#detailMask').classList.remove('open');
+  $('#detailDrawer').classList.remove('open');
+}
+function renderDetail(s, usage) {
+  const statusTag = s.expired ? '<span class="dot exp"></span>已过期' : s.status === 'active' ? '<span class="dot ok"></span>正常' : '<span class="dot off"></span>已停用';
+  const models = s.modelsList === '*' ? '全部模型' : s.modelsList.join(', ');
+  let html = '';
+  html += kv('状态', '<span class="status-tag">' + statusTag + '</span>');
+  html += kv('API Key', '<span class="mono" style="font-size:11px;word-break:break-all">' + esc(s.key) + '</span> <button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '">复制</button>');
+  html += kv('模型', esc(models));
+  html += kv('美元额度', s.quota_usd > 0 ? '$' + fmt(s.quota_usd) : '不限');
+  html += kv('已用美元', '$' + fmt(s.used_usd, 6));
+  html += kv('请求数', fmt(s.used_requests, 0) + (s.quota_requests > 0 ? ' / ' + fmt(s.quota_requests, 0) : ''));
+  html += kv('RPM / RPD', (s.rpm || '—') + ' / ' + (s.rpd || '—'));
+  html += kv('过期', s.expires_at ? shortTime(s.expires_at) : '—');
+  html += kv('备注', s.note ? esc(s.note) : '—');
+  html += kv('创建', shortTime(s.created_at));
+  html += '<div class="card-title" style="margin:20px 0 12px">最近 20 条用量</div>';
+  if (usage.length) {
+    html += '<div style="font-size:12px"><table><thead><tr><th>时间</th><th>模型</th><th>成本</th><th>状态</th></tr></thead><tbody>' +
+      usage.map((r) => '<tr><td>' + shortTime(r.created_at) + '</td><td class="mono">' + esc(r.model) + '</td><td class="mono">$' + fmt(r.cost_usd, 6) + '</td><td>' + esc(r.status) + '</td></tr>').join('') +
+      '</tbody></table></div>';
+  } else {
+    html += '<div class="empty" style="padding:24px">暂无用量记录</div>';
+  }
+  return html;
+}
+function kv(k, v) {
+  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);align-items:flex-start"><span style="color:var(--text-3);font-size:12px;flex-shrink:0;min-width:70px">' + k + '</span><span style="text-align:right;font-size:13px">' + v + '</span></div>';
+}
+
+// ============ 事件委托：订阅操作 ============
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  const act = t.dataset.act;
+  const id = t.dataset.id ? Number(t.dataset.id) : null;
+  const sub = id ? state.subs.find((x) => x.id === id) : null;
+
+  if (act === 'copy') {
+    navigator.clipboard.writeText(t.dataset.key).then(() => toast('已复制到剪贴板', 'ok'));
+  } else if (act === 'detail') {
+    openDetail(id);
+  } else if (act === 'edit') {
+    if (sub) openDrawer(sub);
+  } else if (act === 'rotate') {
+    const ok = await confirm2('换 API Key', '将为 <b>' + esc(sub.name) + '</b> 生成新密钥，<b style="color:var(--red)">旧密钥立即失效</b>。确定继续？');
+    if (!ok) return;
+    try {
+      const { subscription } = await api('/admin/subs/' + id, { method: 'PATCH', body: JSON.stringify({ rotateKey: true }) });
+      toast('已换发新 Key', 'ok');
+      showNewKey(subscription.key);
+      refresh();
+    } catch (e) { toast('换 Key 失败：' + e.message, 'err'); }
+  } else if (act === 'reset') {
+    const ok = await confirm2('重置用量', '将清零 <b>' + esc(sub.name) + '</b> 的已用美元与请求数。确定？');
+    if (!ok) return;
+    try { await api('/admin/subs/' + id + '/reset', { method: 'POST' }); toast('已重置', 'ok'); refresh(); }
+    catch (e) { toast('重置失败：' + e.message, 'err'); }
+  } else if (act === 'del') {
+    const ok = await confirm2('删除订阅', '将永久删除 <b>' + esc(sub.name) + '</b> 及其用量记录，不可恢复。确定？');
+    if (!ok) return;
+    try { await api('/admin/subs/' + id, { method: 'DELETE' }); toast('已删除', 'ok'); refresh(); }
+    catch (e) { toast('删除失败：' + e.message, 'err'); }
+  }
 });
 
-if (TOKEN) checkAuth(); else showAuth();
+// ============ 绑定 ============
+$('#loginBtn').addEventListener('click', doLogin);
+$('#adminKey').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+$('#navList').addEventListener('click', (e) => { const n = e.target.closest('.nav-item'); if (n) go(n.dataset.route); });
+$('#menuBtn').addEventListener('click', openSidebarMobile);
+$('#overlay').addEventListener('click', closeSidebarMobile);
+$('#themeToggle').addEventListener('click', cycleTheme);
+$('#mobileTheme').addEventListener('click', cycleTheme);
+$('#newSubBtn').addEventListener('click', () => openDrawer(null));
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#drawerCancel').addEventListener('click', closeDrawer);
+$('#drawerMask').addEventListener('click', closeDrawer);
+$('#drawerSave').addEventListener('click', saveDrawer);
+$('#detailClose').addEventListener('click', closeDetail);
+$('#detailMask').addEventListener('click', closeDetail);
+$('#modalMask').addEventListener('click', (e) => { if (e.target === $('#modalMask')) $('#modalMask').classList.remove('open'); });
+$('#modelSearch').addEventListener('input', renderModels);
+$('#refreshUsageBtn').addEventListener('click', loadUsage);
+$('#refreshOverviewBtn').addEventListener('click', () => refresh(true));
+$('#applyUsageFilter').addEventListener('click', loadUsage);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeDrawer(); closeDetail(); $('#modalMask').classList.remove('open'); } });
+
+// ============ 启动 ============
+applyTheme();
+if (state.token) {
+  // 校验 token
+  api('/admin/stats').then(() => { showApp(); router(); refresh(); }).catch(() => showAuth());
+} else {
+  showAuth();
+}
 </script>
 </body>
 </html>`;
