@@ -1186,7 +1186,10 @@ function renderModels() {
   if (!modelCache) modelCache = Object.entries(state.models).sort((a, b) => a[0].localeCompare(b[0]));
   const q = ($('#modelSearch').value || '').trim().toLowerCase();
   const rows = modelCache.filter(([id]) => !q || id.toLowerCase().includes(q));
-  const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e;
+  const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e === 'any' ? '自动' : e;
+  // 价格格式化 + 估算标记
+  const price = (v, est) => (v == null ? '—' : (est ? '≈$' : '$') + fmt(v, 4) + (est ? '' : ''));
+  const estTip = '价格估算（上游未提供定价，按同族模型推算）';
   // 用量统计（来自 /admin/stats.byModel）
   const byModelStats = new Map((state.stats?.byModel || []).map((m) => [m.model, m]));
   // 每个模型被多少订阅授权
@@ -1208,11 +1211,12 @@ function renderModels() {
     for (const [id, m] of items) {
       const st = byModelStats.get(id);
       const n = authCount.get(id);
+      const est = !!m.estimated;
       rowsHtml.push('<tr>' +
-        '<td class="mono">' + esc(id) + '</td>' +
+        '<td class="mono">' + esc(id) + (est ? ' <span class="ep-badge" title="' + estTip + '">估</span>' : '') + '</td>' +
         '<td><span class="ep-badge">' + esc(epLabel(m.endpoint)) + '</span></td>' +
-        '<td class="mono">' + m.in + '</td><td class="mono">' + m.out + '</td>' +
-        '<td class="mono">' + m.cacheRead + '</td><td class="mono">' + (m.cacheWrite || '—') + '</td>' +
+        '<td class="mono">' + price(m.in, est) + '</td><td class="mono">' + price(m.out, est) + '</td>' +
+        '<td class="mono">' + price(m.cacheRead, est) + '</td><td class="mono">' + (!m.cacheWrite ? '—' : price(m.cacheWrite, est)) + '</td>' +
         '<td class="mono">' + (st ? fmt(st.requests, 0) : '—') + '</td>' +
         '<td class="mono">' + (st ? '$' + fmt(st.cost, 2) : '—') + '</td>' +
         '<td>' + (n ? n + ' 个订阅' : '<span style="color:var(--text-3)">未授权</span>') + '</td>' +

@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const db = require('./db');
 const config = require('./config');
-const { MODELS } = require('./prices');
+const { getModelCatalog } = require('./prices');
 
 // ---------- 工具 ----------
 
@@ -130,9 +130,14 @@ async function handleAdmin(req, res, pathParts) {
     return json(res, 200, db.stats());
   }
 
-  // GET /admin/models — 模型目录与价格
+  // GET /admin/models — 模型目录与价格（本地表 + 上游动态模型）
   if (method === 'GET' && a === 'models') {
-    return json(res, 200, { models: MODELS });
+    const catalog = require('./prices').getModelCatalog();
+    const out = {};
+    for (const [id, m] of Object.entries(catalog)) {
+      out[id] = { ...m, source: m.estimated ? 'remote' : 'local' };
+    }
+    return json(res, 200, { models: out });
   }
 
   return json(res, 404, { error: 'not found' });

@@ -1,13 +1,13 @@
 'use strict';
 
-const { MODELS } = require('./prices');
+const { getModelCatalog } = require('./prices');
 
 /**
  * 根据 usage 计算美元成本。
  * usage 三种协议已归一化为 { input, output, cached, cacheWrite }
  */
 function calcCost(model, u) {
-  const p = MODELS[model];
+  const p = getModelCatalog()[model];
   if (!p || !u) return 0;
 
   const input = u.input || 0;

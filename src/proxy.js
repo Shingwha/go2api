@@ -2,7 +2,7 @@
 
 const config = require('./config');
 const db = require('./db');
-const { MODELS, normalizeModel, isGloballyEnabled } = require('./prices');
+const { getModelCatalog, normalizeModel, isGloballyEnabled } = require('./prices');
 const { calcCost, parseUsage, parseUsageFromLine, estimateUsage } = require('./billing');
 const { checkRpm } = require('./ratelimit');
 
@@ -131,7 +131,8 @@ async function handleProxy(req, res, endpoint) {
   if (!normalized) {
     return sendError(res, 400, 'invalid_request_error', 'Missing required field "model".');
   }
-  if (!MODELS[normalized]) {
+  const catalog = getModelCatalog();
+  if (!catalog[normalized]) {
     return sendError(res, 400, 'model_not_found',
       `Model '${modelRaw}' is not available on OpenCode Go.`);
   }
@@ -139,10 +140,10 @@ async function handleProxy(req, res, endpoint) {
     return sendError(res, 403, 'model_not_allowed',
       `Model '${modelRaw}' is disabled by the gateway administrator.`);
   }
-  // 协议端点必须匹配模型的 endpoint（防止绕过）
-  if (MODELS[normalized].endpoint !== endpoint) {
+  // 协议端点必须匹配模型的 endpoint（防止绕过）；动态模型 endpoint='any' 不强制
+  if (catalog[normalized].endpoint !== 'any' && catalog[normalized].endpoint !== endpoint) {
     return sendError(res, 400, 'invalid_request_error',
-      `Model '${modelRaw}' must be called via /v1/${MODELS[normalized].endpoint}.`);
+      `Model '${modelRaw}' must be called via /v1/${catalog[normalized].endpoint}.`);
   }
   if (!preflight(sub, normalized, res)) return;
 
@@ -299,7 +300,7 @@ async function forwardStream(upstreamRes, res, sub, model, endpoint, body) {
 
 function handleModels(req, res, withAuth) {
   // OpenAI 兼容列表格式
-  const data = Object.keys(MODELS)
+  const data = Object.keys(getModelCatalog())
     .filter((m) => isGloballyEnabled(m))
     .filter((m) => {
       if (!withAuth || !req.sub) return true;

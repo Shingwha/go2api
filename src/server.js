@@ -5,6 +5,16 @@ const config = require('./config');
 const { handleAdmin } = require('./admin');
 const { handleProxy, handleModels, loadSubscription } = require('./proxy');
 const { HTML } = require('./web');
+const { syncModelsFromUpstream } = require('./prices');
+
+// 启动时同步一次上游模型目录（失败静默降级本地表），之后每 6 小时刷新
+(async () => {
+  const r = await syncModelsFromUpstream();
+  if (r.ok && r.added) console.log(`  [模型同步] 上游新增 ${r.added} 个模型，共 ${r.total} 个可用`);
+  else if (r.ok) console.log(`  [模型同步] 上游 ${r.total} 个模型，与本地表一致`);
+  else if (!r.ok && config.goApiKey) console.log(`  [模型同步] 跳过（${r.reason}），使用本地模型表`);
+})();
+setInterval(() => { syncModelsFromUpstream().catch(() => {}); }, 6 * 3600000);
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
