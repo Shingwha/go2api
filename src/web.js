@@ -269,7 +269,39 @@ textarea { resize: vertical; min-height: 60px; }
 
 /* key 文本 */
 .key-box { display: flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--border); padding: 5px 8px; }
-.key-box .k { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.key-box .k { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: pointer; }
+.key-box .k:hover { color: var(--text); }
+.key-box .k.revealed { color: var(--text); letter-spacing: .02em; }
+.key-box .btn-icon { padding: 3px 8px; min-height: 26px; flex-shrink: 0; }
+.btn-icon.copied { color: var(--green); border-color: var(--green); }
+
+/* ============ 消费趋势 ============ */
+.trend-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); background: var(--surface); }
+.seg button { background: transparent; color: var(--text-2); border: none; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { color: var(--text); }
+.seg button.active { background: var(--accent); color: var(--accent-text); }
+#trendChart { display: flex; align-items: flex-end; gap: 3px; height: 190px; padding: 10px 2px 0; overflow-x: auto; }
+.trend-col { flex: 1 1 0; min-width: 16px; height: 100%; display: flex; flex-direction: column; cursor: pointer; }
+.trend-stack { display: flex; flex-direction: column; justify-content: flex-end; width: 100%; height: 100%; min-height: 2px; background: var(--surface-2); }
+.trend-seg { width: 100%; min-height: 1px; }
+.trend-col:hover .trend-stack { outline: 1px solid var(--accent); outline-offset: 1px; }
+.trend-col.sel .trend-stack { outline: 2px solid var(--accent); outline-offset: 1px; }
+.trend-x { font-size: 10px; color: var(--text-3); text-align: center; margin-top: 5px; white-space: nowrap; overflow: hidden; }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 12px; font-size: 12px; color: var(--text-2); }
+.trend-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.trend-legend .sw { width: 9px; height: 9px; flex-shrink: 0; }
+#trendDetail { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+
+/* 模型表分组 */
+.model-group td { background: var(--surface-2); font-weight: 700; font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; padding: 6px 10px; }
+.ep-badge { font-size: 10px; padding: 1px 6px; border: 1px solid var(--border-strong); color: var(--text-2); background: var(--surface); white-space: nowrap; }
+
+/* 订阅筛选栏 */
+.sub-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sub-toolbar .form-field { margin: 0; }
+.sub-toolbar select, .sub-toolbar input { width: auto; }
 
 /* 表格 */
 .table-wrap { overflow-x: auto; }
@@ -481,6 +513,27 @@ td .mono { font-size: 12px; }
         </div>
         <div class="stat-grid" id="statsGrid"></div>
         <div id="tokenInfo"></div>
+        <div class="card" style="margin-top:16px">
+          <div class="card-title">消费趋势</div>
+          <div class="trend-toolbar">
+            <div class="seg" id="trendDim">
+              <button data-dim="model" class="active">按模型</button>
+              <button data-dim="sub">按用户</button>
+            </div>
+            <div class="seg" id="trendGran">
+              <button data-gran="day" class="active">按天</button>
+              <button data-gran="hour">按小时</button>
+            </div>
+            <div class="seg" id="trendDays">
+              <button data-days="7">7 天</button>
+              <button data-days="30" class="active">30 天</button>
+            </div>
+            <span style="font-size:12px;color:var(--text-3)">点击柱子查看明细</span>
+          </div>
+          <div id="trendChart"><div class="empty" style="padding:40px">加载中…</div></div>
+          <div id="trendLegend" class="trend-legend"></div>
+          <div id="trendDetail"></div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="overviewPanels">
           <div class="card">
             <div class="card-title">按模型成本分布</div>
@@ -500,7 +553,29 @@ td .mono { font-size: 12px; }
             <h1 class="page-title">订阅</h1>
             <div class="page-sub">管理 API 订阅密钥、额度与限流</div>
           </div>
-          <button class="btn btn-primary" id="newSubBtn">+ 新建订阅</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <div class="sub-toolbar">
+              <div class="form-field">
+                <input type="text" id="subSearch" placeholder="搜索名称/备注…" style="min-width:150px">
+              </div>
+              <div class="form-field">
+                <select id="subFilter">
+                  <option value="">全部状态</option>
+                  <option value="active">正常</option>
+                  <option value="disabled">已停用</option>
+                  <option value="expired">已过期</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <select id="subSort">
+                  <option value="id">最新创建</option>
+                  <option value="lastUsed">最后活跃</option>
+                  <option value="remaining">剩余额度</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="newSubBtn">+ 新建订阅</button>
+          </div>
         </div>
         <div id="subsList"></div>
       </section>
@@ -676,6 +751,8 @@ const state = {
   detailSub: null,
   detailUsage: [],
   theme: localStorage.getItem('go2api_theme') || 'auto', // auto | light | dark
+  reveal: {},      // 卡片上已展开完整 key 的订阅 id
+  expandModels: {}, // 卡片上已展开全部模型 chips 的订阅 id
 };
 
 // ============ 工具 ============
@@ -689,9 +766,37 @@ function shortTime(s) {
   const d = new Date(s);
   return d.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
-function shortKey(k) {
+// 掩码显示：sk-go2api-********xxxx
+function maskKey(k) {
   if (!k) return '';
-  return k.length > 26 ? k.slice(0, 14) + '…' + k.slice(-8) : k;
+  if (k.length <= 16) return k;
+  return k.slice(0, 12) + '•'.repeat(10) + k.slice(-4);
+}
+// 相对时间："5 分钟前"
+function relTime(s) {
+  if (!s) return '—';
+  const d = Date.now() - new Date(s).getTime();
+  if (d < 60000) return '刚刚';
+  if (d < 3600000) return Math.floor(d / 60000) + ' 分钟前';
+  if (d < 86400000) return Math.floor(d / 3600000) + ' 小时前';
+  if (d < 604800000) return Math.floor(d / 86400000) + ' 天前';
+  return shortTime(s);
+}
+// 剪贴板兜底（非安全上下文）
+function copyText(text, done) {
+  const ok = () => { if (done) done(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(ok).catch(() => fallbackCopy(text, ok));
+  } else fallbackCopy(text, ok);
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) { /* ignore */ }
+  ta.remove();
 }
 
 async function api(path, opts = {}) {
@@ -819,6 +924,7 @@ async function refresh(showToast = false) {
     state.stats = stats; state.subs = subs.subscriptions; state.models = models.models;
     renderStats();
     renderSubs();
+    loadTrend();
     if (state.route === 'models') renderModels();
     if (showToast) toast('已刷新', 'ok');
   } catch (e) {
@@ -873,14 +979,117 @@ function summaryRow(l, v, color) {
   return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text-2);font-size:13px">' + l + '</span><b style="color:' + (color || 'var(--text)') + '">' + v + '</b></div>';
 }
 
+// ============ 消费趋势（堆叠柱状图） ============
+const trendState = { dim: 'model', gran: 'day', days: 30, raw: [], buckets: new Map(), sel: null };
+const PALETTE = ['#4f8cff', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6', '#8b5cf6', '#64748b'];
+function trendColor(key, map) {
+  if (!map.has(key)) map.set(key, PALETTE[map.size % PALETTE.length]);
+  return map.get(key);
+}
+function subName(id) {
+  const s = state.subs.find((x) => x.id === id);
+  return s ? s.name : '#' + id;
+}
+function trendBucketKey(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  return trendState.gran === 'hour' ? ymd + ' ' + pad(d.getHours()) + ':00' : ymd;
+}
+async function loadTrend() {
+  try {
+    const j = await api('/admin/timeseries?days=' + trendState.days);
+    trendState.raw = j.usage || [];
+    renderTrend();
+  } catch (e) {
+    $('#trendChart').innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+    $('#trendLegend').innerHTML = '';
+  }
+}
+function renderTrend() {
+  const colorMap = new Map();
+  const buckets = new Map();
+  for (const r of trendState.raw) {
+    const k = trendBucketKey(r.created_at);
+    if (!buckets.has(k)) buckets.set(k, { key: k, cost: 0, req: 0, items: new Map() });
+    const b = buckets.get(k);
+    b.cost += r.cost_usd || 0;
+    b.req += 1;
+    const dimKey = trendState.dim === 'sub' ? 's' + r.sub_id : 'm' + r.model;
+    const label = trendState.dim === 'sub' ? subName(r.sub_id) : r.model;
+    if (!b.items.has(dimKey)) b.items.set(dimKey, { key: dimKey, label, cost: 0 });
+    b.items.get(dimKey).cost += r.cost_usd || 0;
+  }
+  trendState.buckets = buckets;
+  const list = [...buckets.values()].sort((a, b) => a.key.localeCompare(b.key));
+  const maxCost = list.length ? Math.max(...list.map((b) => b.cost), 0.000001) : 0;
+  // 图例：按总成本取 Top 8
+  const allItems = new Map();
+  for (const b of list) for (const it of b.items.values()) {
+    if (!allItems.has(it.key)) allItems.set(it.key, { key: it.key, label: it.label, cost: 0 });
+    allItems.get(it.key).cost += it.cost;
+  }
+  const legend = [...allItems.values()].sort((a, b) => b.cost - a.cost).slice(0, 8);
+  $('#trendLegend').innerHTML = legend.map((it) =>
+    '<span class="lg"><span class="sw" style="background:' + trendColor(it.key, colorMap) + '"></span>' + esc(it.label) + ' <b>$' + fmt(it.cost, 2) + '</b></span>'
+  ).join('') + (legend.length < allItems.size ? '<span class="lg">…共 ' + allItems.size + ' 项</span>' : '');
+  // 柱子
+  const chart = $('#trendChart');
+  if (!list.length) {
+    chart.innerHTML = '<div class="empty" style="padding:40px">该时段暂无消费记录</div>';
+    $('#trendDetail').innerHTML = '';
+    return;
+  }
+  chart.innerHTML = list.map((b) => {
+    const segs = [...b.items.values()].sort((a, c) => c.cost - a.cost);
+    const hPct = Math.max(2, (b.cost / maxCost) * 100);
+    const segHtml = segs.map((it) =>
+      '<div class="trend-seg" style="height:' + (it.cost / b.cost * 100).toFixed(2) + '%;background:' + trendColor(it.key, colorMap) +
+      '" title="' + esc(it.label) + '：$' + fmt(it.cost, 4) + '"></div>'
+    ).join('');
+    const x = trendState.gran === 'hour' ? b.key.slice(5, 16) : b.key.slice(5);
+    return '<div class="trend-col' + (trendState.sel === b.key ? ' sel' : '') + '" data-bucket="' + esc(b.key) + '" title="' + esc(b.key) + '｜$' + fmt(b.cost, 4) + '｜' + b.req + ' 次请求（点击查看明细）">' +
+      '<div class="trend-stack">' + segHtml + '</div>' +
+      '<div class="trend-x">' + esc(x) + '</div></div>';
+  }).join('');
+  // 选中柱子的明细
+  const selB = trendState.sel && buckets.get(trendState.sel);
+  $('#trendDetail').innerHTML = selB ? trendDetailHtml(selB) : '';
+}
+function trendDetailHtml(b) {
+  const rows = [...b.items.values()].sort((a, c) => c.cost - a.cost);
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+    '<b style="font-size:13px">' + esc(b.key) + ' 消费明细（' + (trendState.dim === 'sub' ? '按用户' : '按模型') + '）</b>' +
+    '<button class="btn-icon" id="trendClose">✕ 关闭</button></div>' +
+    '<table><thead><tr><th>' + (trendState.dim === 'sub' ? '用户' : '模型') + '</th><th>成本</th><th>占比</th></tr></thead><tbody>' +
+    rows.map((it) => '<tr><td class="mono">' + esc(it.label) + '</td><td class="mono">$' + fmt(it.cost, 4) + '</td><td class="mono">' + (b.cost ? (it.cost / b.cost * 100).toFixed(1) : '0') + '%</td></tr>').join('') +
+    '</tbody></table>';
+}
+
 // ============ 渲染：订阅卡片 ============
 function renderSubs() {
   const el = $('#subsList');
-  if (!state.subs.length) {
-    el.innerHTML = '<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12"/><path d="M3 10h18"/></svg><div>暂无订阅，点击「新建订阅」开始</div></div>';
+  const q = ($('#subSearch').value || '').trim().toLowerCase();
+  const f = $('#subFilter').value;
+  const sort = $('#subSort').value;
+  let list = state.subs.filter((s) => {
+    if (q && !(s.name || '').toLowerCase().includes(q) && !(s.note || '').toLowerCase().includes(q)) return false;
+    if (f === 'active' && (s.status !== 'active' || s.expired)) return false;
+    if (f === 'disabled' && s.status !== 'disabled') return false;
+    if (f === 'expired' && !s.expired) return false;
+    return true;
+  });
+  if (sort === 'lastUsed') list = [...list].sort((a, b) => (b.lastUsedAt || '').localeCompare(a.lastUsedAt || ''));
+  else if (sort === 'remaining') list = [...list].sort((a, b) => ((b.remainingUsd ?? -1) - (a.remainingUsd ?? -1)) || (b.id - a.id));
+  else list = [...list].sort((a, b) => b.id - a.id);
+  if (!list.length) {
+    const empty = state.subs.length
+      ? '<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><div>没有匹配的订阅，试试调整搜索或筛选条件</div></div>'
+      : '<div class="card empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="6" width="18" height="12"/><path d="M3 10h18"/></svg><div>暂无订阅，点击「新建订阅」开始</div></div>';
+    el.innerHTML = empty;
     return;
   }
-  el.innerHTML = '<div class="sub-grid">' + state.subs.map(renderSubCard).join('') + '</div>';
+  el.innerHTML = '<div class="sub-grid">' + list.map(renderSubCard).join('') + '</div>';
 }
 function renderSubCard(s) {
   const statusTag = s.expired
@@ -889,35 +1098,50 @@ function renderSubCard(s) {
     ? '<span class="status-tag"><span class="dot ok"></span>正常</span>'
     : '<span class="status-tag"><span class="dot off"></span>已停用</span>';
 
-  // 用量进度条
-  let barHtml = '';
+  // 用量进度条 + 剩余额度为主
+  let barHtml = '', pct = 0, usedLine = '';
   if (s.quota_usd > 0) {
-    const pct = Math.min(100, (s.used_usd / s.quota_usd) * 100);
+    pct = Math.min(100, (s.used_usd / s.quota_usd) * 100);
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
     barHtml = '<div class="bar" style="margin-top:6px"><div class="bar-fill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div></div>';
+    usedLine = '<span class="dim">已用 $' + fmt(s.used_usd, 4) + ' / $' + fmt(s.quota_usd) + '（' + pct.toFixed(0) + '%）</span>';
   } else if (s.quota_requests > 0) {
-    const pct = Math.min(100, (s.used_requests / s.quota_requests) * 100);
+    pct = Math.min(100, (s.used_requests / s.quota_requests) * 100);
     const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
     barHtml = '<div class="bar" style="margin-top:6px"><div class="bar-fill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div></div>';
+    usedLine = '<span class="dim">已用 ' + fmt(s.used_requests, 0) + ' / ' + fmt(s.quota_requests, 0) + ' 次</span>';
   }
-
-  // 用量数值行
-  const usedBig = s.quota_usd > 0
-    ? '<span class="big">$' + fmt(s.used_usd, 4) + '</span> <span class="dim">/ $' + fmt(s.quota_usd) + '</span>'
-    : '<span class="big">' + fmt(s.used_requests, 0) + '</span> <span class="dim">次' + (s.quota_requests > 0 ? ' / ' + fmt(s.quota_requests, 0) : '') + '</span>';
+  const usageBig = s.quota_usd > 0
+    ? '<span class="big">$' + fmt(s.remainingUsd, 4) + '</span> <span class="dim">剩余</span>'
+    : s.quota_requests > 0
+    ? '<span class="big">' + fmt(s.remainingRequests, 0) + '</span> <span class="dim">次剩余</span>'
+    : '<span class="big">$' + fmt(s.used_usd, 4) + '</span> <span class="dim">已用（不限额度）</span>';
 
   // 限额信息行
   const metas = [];
-  if (s.quota_usd > 0) metas.push('请求 ' + fmt(s.used_requests, 0));
   if (s.rpm) metas.push(s.rpm + ' RPM');
   if (s.rpd) metas.push(s.rpd + '/天');
   if (s.expires_at) metas.push('到期 ' + shortTime(s.expires_at));
+  metas.push('活跃 ' + relTime(s.lastUsedAt));
 
-  // 模型 chips
-  const models = s.modelsList === '*' ? '全部模型' : s.modelsList;
-  const chips = models === '全部模型'
-    ? '<span class="chip">全部模型</span>'
-    : '<div class="chips">' + s.modelsList.slice(0, 4).map((m) => '<span class="chip">' + esc(m) + '</span>').join('') + (s.modelsList.length > 4 ? '<span class="chip">+' + (s.modelsList.length - 4) + '</span>' : '') + '</div>';
+  // 模型 chips（可展开）
+  let chips;
+  if (s.modelsList === '*') {
+    chips = '<span class="chip">全部模型</span>';
+  } else {
+    const showAll = !!state.expandModels[s.id];
+    const shown = showAll ? s.modelsList : s.modelsList.slice(0, 4);
+    chips = '<div class="chips">' + shown.map((m) => '<span class="chip">' + esc(m) + '</span>').join('') +
+      (s.modelsList.length > 4
+        ? (showAll
+          ? '<span class="chip more" data-act="collapse" data-id="' + s.id + '" title="收起">收起</span>'
+          : '<span class="chip more" data-act="expand" data-id="' + s.id + '" title="展开全部模型">+' + (s.modelsList.length - 4) + '</span>')
+        : '') + '</div>';
+  }
+
+  // key：默认掩码，可展开显示完整
+  const revealed = !!state.reveal[s.id];
+  const keyText = revealed ? s.key : maskKey(s.key);
 
   return '<div class="sub-card">' +
     '<div class="sub-head">' +
@@ -925,14 +1149,15 @@ function renderSubCard(s) {
       statusTag +
     '</div>' +
     '<div class="sub-body">' +
-      '<div><div class="usage-row">' + usedBig + '</div>' + barHtml + '</div>' +
+      '<div><div class="usage-row"><span>' + usageBig + '</span>' + usedLine + '</div>' + barHtml + '</div>' +
       '<div class="meta-line">' + (metas.length ? metas.map((m) => '<span>' + esc(m) + '</span>').join('') : '<span>无限制</span>') + '</div>' +
       chips +
     '</div>' +
     '<div class="sub-foot">' +
-      '<div class="key-box" style="flex:1;min-width:0" title="' + esc(s.key) + '">' +
-        '<span class="k">' + esc(shortKey(s.key)) + '</span>' +
-        '<button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '">复制</button>' +
+      '<div class="key-box" style="flex:1;min-width:0" title="点击密钥可复制完整 Key">' +
+        '<span class="k' + (revealed ? ' revealed' : '') + '" data-act="copy" data-key="' + esc(s.key) + '">' + esc(keyText) + '</span>' +
+        '<button class="btn-icon" data-act="reveal" data-id="' + s.id + '" title="' + (revealed ? '隐藏' : '显示') + '完整密钥">' + (revealed ? '隐藏' : '显示') + '</button>' +
+        '<button class="btn-icon" data-act="copy" data-key="' + esc(s.key) + '" title="复制完整 Key">复制</button>' +
       '</div>' +
       '<div class="sub-actions">' +
         '<button class="btn-icon" data-act="edit" data-id="' + s.id + '">编辑</button>' +
@@ -946,19 +1171,51 @@ function renderSubCard(s) {
 
 // ============ 渲染：模型表 ============
 let modelCache = null;
+function groupOf(id) {
+  const i = id.indexOf('-');
+  return i > 0 ? id.slice(0, i) : id;
+}
 function renderModels() {
   if (!modelCache) modelCache = Object.entries(state.models).sort((a, b) => a[0].localeCompare(b[0]));
   const q = ($('#modelSearch').value || '').trim().toLowerCase();
   const rows = modelCache.filter(([id]) => !q || id.toLowerCase().includes(q));
   const epLabel = (e) => e === 'chat/completions' ? 'chat' : e === 'responses' ? 'responses' : e === 'messages' ? 'messages' : e;
+  // 用量统计（来自 /admin/stats.byModel）
+  const byModelStats = new Map((state.stats?.byModel || []).map((m) => [m.model, m]));
+  // 每个模型被多少订阅授权
+  const authCount = new Map();
+  for (const s of state.subs) {
+    if (s.modelsList === '*') continue;
+    for (const m of s.modelsList) authCount.set(m, (authCount.get(m) || 0) + 1);
+  }
+  // 按厂商分组
+  const groups = new Map();
+  for (const [id, m] of rows) {
+    const g = groupOf(id);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push([id, m]);
+  }
+  const rowsHtml = [];
+  for (const [g, items] of groups) {
+    rowsHtml.push('<tr class="model-group"><td colspan="9">' + esc(g) + '</td></tr>');
+    for (const [id, m] of items) {
+      const st = byModelStats.get(id);
+      const n = authCount.get(id);
+      rowsHtml.push('<tr>' +
+        '<td class="mono">' + esc(id) + '</td>' +
+        '<td><span class="ep-badge">' + esc(epLabel(m.endpoint)) + '</span></td>' +
+        '<td class="mono">' + m.in + '</td><td class="mono">' + m.out + '</td>' +
+        '<td class="mono">' + m.cacheRead + '</td><td class="mono">' + (m.cacheWrite || '—') + '</td>' +
+        '<td class="mono">' + (st ? fmt(st.requests, 0) : '—') + '</td>' +
+        '<td class="mono">' + (st ? '$' + fmt(st.cost, 2) : '—') + '</td>' +
+        '<td>' + (n ? n + ' 个订阅' : '<span style="color:var(--text-3)">未授权</span>') + '</td>' +
+        '</tr>');
+    }
+  }
   $('#modelsTable').innerHTML = '<table><thead><tr>' +
-    '<th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读</th><th>缓存写</th>' +
+    '<th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存读</th><th>缓存写</th><th>请求</th><th>成本</th><th>授权</th>' +
     '</tr></thead><tbody>' +
-    (rows.length ? rows.map(([id, m]) =>
-      '<tr><td class="mono">' + esc(id) + '</td><td>' + esc(epLabel(m.endpoint)) + '</td>' +
-      '<td class="mono">' + m.in + '</td><td class="mono">' + m.out + '</td>' +
-      '<td class="mono">' + m.cacheRead + '</td><td class="mono">' + (m.cacheWrite || '—') + '</td></tr>'
-    ).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:32px">无匹配模型</td></tr>') +
+    (rowsHtml.length ? rowsHtml.join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-3);padding:32px">无匹配模型</td></tr>') +
     '</tbody></table>';
 }
 
@@ -1135,7 +1392,26 @@ document.addEventListener('click', async (e) => {
   const sub = id ? state.subs.find((x) => x.id === id) : null;
 
   if (act === 'copy') {
-    navigator.clipboard.writeText(t.dataset.key).then(() => toast('已复制到剪贴板', 'ok'));
+    const btn = t.classList.contains('k') ? null : t;
+    const markDone = () => {
+      if (btn) {
+        const old = btn.textContent;
+        btn.textContent = '已复制 ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = old; btn.classList.remove('copied'); }, 1500);
+      }
+    };
+    copyText(t.dataset.key, markDone);
+    toast('已复制到剪贴板', 'ok');
+  } else if (act === 'reveal') {
+    state.reveal[id] = !state.reveal[id];
+    renderSubs();
+  } else if (act === 'expand') {
+    state.expandModels[id] = true;
+    renderSubs();
+  } else if (act === 'collapse') {
+    state.expandModels[id] = false;
+    renderSubs();
   } else if (act === 'detail') {
     openDetail(id);
   } else if (act === 'edit') {
@@ -1179,6 +1455,42 @@ $('#detailClose').addEventListener('click', closeDetail);
 $('#detailMask').addEventListener('click', closeDetail);
 $('#modalMask').addEventListener('click', (e) => { if (e.target === $('#modalMask')) $('#modalMask').classList.remove('open'); });
 $('#modelSearch').addEventListener('input', renderModels);
+$('#subSearch').addEventListener('input', renderSubs);
+$('#subFilter').addEventListener('change', renderSubs);
+$('#subSort').addEventListener('change', renderSubs);
+$('#trendDim').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  trendState.dim = b.dataset.dim;
+  trendState.sel = null;
+  $$('#trendDim button').forEach((x) => x.classList.toggle('active', x === b));
+  renderTrend();
+});
+$('#trendGran').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  trendState.gran = b.dataset.gran;
+  trendState.sel = null;
+  $$('#trendGran button').forEach((x) => x.classList.toggle('active', x === b));
+  renderTrend();
+});
+$('#trendDays').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  trendState.days = Number(b.dataset.days);
+  trendState.sel = null;
+  $$('#trendDays button').forEach((x) => x.classList.toggle('active', x === b));
+  loadTrend();
+});
+$('#trendChart').addEventListener('click', (e) => {
+  const c = e.target.closest('.trend-col');
+  if (!c) return;
+  trendState.sel = trendState.sel === c.dataset.bucket ? null : c.dataset.bucket;
+  renderTrend();
+});
+$('#trendDetail').addEventListener('click', (e) => {
+  if (e.target.closest('#trendClose')) { trendState.sel = null; renderTrend(); }
+});
 $('#refreshUsageBtn').addEventListener('click', loadUsage);
 $('#refreshOverviewBtn').addEventListener('click', () => refresh(true));
 $('#applyUsageFilter').addEventListener('click', loadUsage);

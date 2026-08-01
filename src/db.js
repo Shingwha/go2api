@@ -89,7 +89,13 @@ function getSubscriptionById(id) {
 }
 
 function listSubscriptions() {
-  return db.prepare('SELECT * FROM subscriptions ORDER BY id DESC').all().map(decorate);
+  const rows = db.prepare('SELECT * FROM subscriptions ORDER BY id DESC').all();
+  // 每个订阅最后成功请求时间（用于卡片展示/排序）
+  const lastUsed = new Map(
+    db.prepare("SELECT sub_id, MAX(created_at) AS t FROM usage_logs WHERE status = 'ok' GROUP BY sub_id")
+      .all().map((r) => [r.sub_id, r.t])
+  );
+  return rows.map((r) => { const s = decorate(r); s.lastUsedAt = lastUsed.get(s.id) || null; return s; });
 }
 
 function updateSubscription(id, fields) {
@@ -156,6 +162,14 @@ function countRequestsToday(subId) {
   return row.n;
 }
 
+// 近 N 天成功用量（消费趋势聚合用，前端按本地时区分组）
+function usageSince(days) {
+  const from = new Date(Date.now() - days * 86400000).toISOString();
+  return db.prepare(
+    "SELECT sub_id, model, cost_usd, created_at FROM usage_logs WHERE status = 'ok' AND created_at >= ? ORDER BY created_at"
+  ).all(from);
+}
+
 function usageLogs(subId, limit = 50) {
   const rows = subId
     ? db.prepare('SELECT * FROM usage_logs WHERE sub_id = ? ORDER BY id DESC LIMIT ?').all(subId, limit)
@@ -212,6 +226,6 @@ module.exports = {
   db,
   createSubscription, getSubscriptionByKey, getSubscriptionById,
   listSubscriptions, updateSubscription, deleteSubscription, resetUsage,
-  addUsage, countRequestsToday, usageLogs, stats,
+  addUsage, countRequestsToday, usageLogs, usageSince, stats,
   parseModelsField,
 };

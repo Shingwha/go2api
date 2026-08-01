@@ -118,6 +118,13 @@ async function handleAdmin(req, res, pathParts) {
     return json(res, 200, { usage: db.usageLogs(subId ? Number(subId) : null, Math.min(limit, 500)) });
   }
 
+  // GET /admin/timeseries?days=30 — 消费趋势原始数据（前端按本地时区聚合）
+  if (method === 'GET' && a === 'timeseries') {
+    const url = new URL(req.url, 'http://x');
+    const days = Math.min(parseInt(url.searchParams.get('days') || '30', 10) || 30, 90);
+    return json(res, 200, { days, usage: db.usageSince(days) });
+  }
+
   // GET /admin/stats — 总览
   if (method === 'GET' && a === 'stats') {
     return json(res, 200, db.stats());
