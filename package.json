@@ -1,0 +1,14 @@
+{
+  "name": "go2api",
+  "version": "1.0.0",
+  "description": "OpenCode Go 转发订阅网关 — 支持模型控制、用量控制、速率限制，可部署到 Railway",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=23.4"
+  },
+  "license": "MIT"
+}
