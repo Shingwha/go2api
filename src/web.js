@@ -70,11 +70,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-button, input, select, textarea {
-  font-family: inherit;
-  font-size: 14px;
-  /* 防 iOS 聚焦放大 */
-}
+button, input, select, textarea { font-family: inherit; font-size: 14px; }
 input, select, textarea { font-size: 16px; }
 @media (min-width: 769px) { input, select, textarea { font-size: 14px; } }
 .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; }
@@ -197,7 +193,6 @@ input, select, textarea { font-size: 16px; }
   padding: 16px;
 }
 .stat .n { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
-.stat .n .unit { font-size: 14px; font-weight: 500; color: var(--text-3); margin-left: 2px; }
 .stat .l { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 .stat .sub { font-size: 11px; color: var(--text-3); margin-top: 6px; }
 
@@ -217,7 +212,6 @@ input, select, textarea { font-size: 16px; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn-danger { color: var(--red); border-color: var(--border-strong); }
 .btn-danger:hover { background: var(--red-bg); border-color: var(--red); }
-.btn-sm { padding: 5px 10px; min-height: 30px; font-size: 12px; }
 .btn-icon {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 6px 10px; min-height: 32px;
@@ -248,7 +242,6 @@ textarea { resize: vertical; min-height: 60px; }
 .form-field .hint { font-size: 11px; color: var(--text-3); }
 .form-section { margin-bottom: 18px; }
 .form-section-title { font-size: 12px; color: var(--text-3); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
-.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
 
 /* 徽点 / 状态 */
 .dot { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; }
@@ -260,6 +253,8 @@ textarea { resize: vertical; min-height: 60px; }
 /* chip 标签 */
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { font-size: 11px; padding: 2px 6px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+.chip.more { cursor: pointer; }
+.chip.more:hover { color: var(--text); border-color: var(--border-strong); }
 
 /* 进度条 */
 .bar { height: 8px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
@@ -317,6 +312,9 @@ td .mono { font-size: 12px; }
 
 /* 订阅卡片网格 */
 .sub-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+
+/* 总览双面板 */
+.overview-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 .sub-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -358,6 +356,7 @@ td .mono { font-size: 12px; }
   transition: transform .2s ease;
 }
 .drawer.open { transform: translateX(0); }
+.drawer.detail { width: 480px; }
 .drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .drawer-title { font-size: 16px; font-weight: 700; }
 .drawer-body { flex: 1; overflow-y: auto; padding: 20px; }
@@ -428,14 +427,29 @@ td .mono { font-size: 12px; }
   .content { padding: 20px 16px 40px; }
 }
 @media (max-width: 768px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat { padding: 12px; }
+  .stat .n { font-size: 20px; }
   .sub-grid { grid-template-columns: 1fr; }
-  .drawer { width: 100vw; }
+  .drawer, .drawer.detail { width: 100vw; }
+  .drawer-body { padding: 16px; }
   #toasts { left: 12px; right: 12px; bottom: 12px; }
   .toast { min-width: 0; }
   .content { padding: 16px 12px 32px; }
   .page-title { font-size: 18px; }
   .form-grid { grid-template-columns: 1fr; }
+  /* 总览双面板：窄屏改为单列堆叠 */
+  .overview-panels { grid-template-columns: 1fr; }
+  /* 订阅卡片：key 与操作按钮纵向堆叠，避免挤在一行 */
+  .sub-foot { flex-direction: column; align-items: stretch; }
+  .sub-actions { justify-content: flex-start; }
+  .usage-row { flex-wrap: wrap; gap: 2px 8px; }
+  /* 模型成本分布：窄屏压缩名称/数值列宽 */
+  .dist-row { gap: 8px; }
+  .dist-name { width: 100px; }
+  .dist-val { width: 62px; font-size: 11px; }
+  /* 趋势明细表格允许横向滚动 */
+  #trendDetail { overflow-x: auto; }
 }
 </style>
 </head>
@@ -538,7 +552,7 @@ td .mono { font-size: 12px; }
           <div id="trendLegend" class="trend-legend"></div>
           <div id="trendDetail"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px" id="overviewPanels">
+        <div class="overview-panels" id="overviewPanels">
           <div class="card">
             <div class="card-title">按模型成本分布</div>
             <div id="distChart"></div>
@@ -672,7 +686,7 @@ td .mono { font-size: 12px; }
         </div>
         <div class="form-field" style="grid-column:1/-1">
           <label>账户状态</label>
-          <select id="fStatus">
+          <select id="fSubStatus">
             <option value="active">正常</option>
             <option value="disabled">已停用（暂时禁用，请求将被拒绝）</option>
           </select>
@@ -727,7 +741,7 @@ td .mono { font-size: 12px; }
 
 <!-- ===== 详情抽屉（订阅用量历史） ===== -->
 <div class="drawer-mask" id="detailMask"></div>
-<div class="drawer" id="detailDrawer" style="width:480px">
+<div class="drawer detail" id="detailDrawer">
   <div class="drawer-head">
     <div class="drawer-title" id="detailTitle">订阅详情</div>
     <button class="icon-btn" id="detailClose" aria-label="关闭">
@@ -808,8 +822,6 @@ const state = {
   models: {},
   pendingModels: [],
   usage: [],
-  detailSub: null,
-  detailUsage: [],
   theme: localStorage.getItem('go2api_theme') || 'auto', // auto | light | dark
   expandModels: {}, // 卡片上已展开全部模型 chips 的订阅 id
 };
@@ -939,12 +951,6 @@ async function doLogin() {
     $('#loginBtn').disabled = false;
   }
 }
-function logout() {
-  state.token = '';
-  localStorage.removeItem('go2api_admin_key');
-  showAuth();
-}
-
 // ============ 路由 ============
 function go(route) {
   state.route = route;
@@ -1099,7 +1105,6 @@ function renderTrend() {
   const labelEvery = list.length > 48 ? Math.ceil(list.length / 24) : 1;
   chart.innerHTML = list.map((b, i) => {
     const segs = [...b.items.values()].sort((a, c) => c.cost - a.cost);
-    const hPct = Math.max(2, (b.cost / maxCost) * 100);
     const segHtml = segs.map((it) =>
       '<div class="trend-seg" style="height:' + (it.cost / b.cost * 100).toFixed(2) + '%;background:' + trendColor(it.key, colorMap) +
       '" title="' + esc(it.label) + '：$' + fmt(it.cost, 4) + '"></div>'
@@ -1120,9 +1125,9 @@ function trendDetailHtml(b) {
   return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
     '<b style="font-size:13px">' + esc(b.key) + ' 消费明细（' + (trendState.dim === 'sub' ? '按用户' : '按模型') + '）</b>' +
     '<button class="btn-icon" id="trendClose">✕ 关闭</button></div>' +
-    '<table><thead><tr><th>' + (trendState.dim === 'sub' ? '用户' : '模型') + '</th><th>成本</th><th>占比</th></tr></thead><tbody>' +
+    '<div class="table-wrap"><table><thead><tr><th>' + (trendState.dim === 'sub' ? '用户' : '模型') + '</th><th>成本</th><th>占比</th></tr></thead><tbody>' +
     rows.map((it) => '<tr><td class="mono">' + esc(it.label) + '</td><td class="mono">$' + fmt(it.cost, 4) + '</td><td class="mono">' + (b.cost ? (it.cost / b.cost * 100).toFixed(1) : '0') + '%</td></tr>').join('') +
-    '</tbody></table>';
+    '</tbody></table></div>';
 }
 
 // ============ 渲染：订阅卡片 ============
@@ -1385,7 +1390,7 @@ function openDrawer(sub) {
   $('#drawerTitle').textContent = sub ? '编辑订阅' : '新建订阅';
   $('#fId').value = sub ? sub.id : '';
   $('#fName').value = sub ? sub.name : '';
-  $('#fStatus').value = sub ? (sub.status === 'disabled' ? 'disabled' : 'active') : 'active';
+  $('#fSubStatus').value = sub ? (sub.status === 'disabled' ? 'disabled' : 'active') : 'active';
   $('#fModels').value = (sub && sub.modelsList !== '*') ? sub.modelsList.join(', ') : '';
   $('#fQuotaUsd').value = sub ? (sub.quota_usd || '') : '';
   $('#fQuotaReq').value = sub ? (sub.quota_requests || '') : '';
@@ -1410,7 +1415,7 @@ async function saveDrawer() {
   const id = $('#fId').value;
   const body = {
     name: $('#fName').value.trim(),
-    status: $('#fStatus').value,
+    status: $('#fSubStatus').value,
     models: $('#fModels').value.split(',').map((s) => s.trim()).filter(Boolean),
     quotaUsd: parseFloat($('#fQuotaUsd').value) || 0,
     quotaRequests: parseInt($('#fQuotaReq').value, 10) || 0,
@@ -1447,7 +1452,7 @@ function showNewKey(key) {
     '<div style="margin-top:10px;font-size:12px;color:var(--text-3)">在订阅卡片上可随时复制。</div>';
   $('#modalOk').textContent = '复制';
   $('#modalMask').classList.add('open');
-  const ok = () => { cleanup(); navigator.clipboard.writeText(key).then(() => toast('已复制', 'ok')); };
+  const ok = () => { cleanup(); copyText(key, () => toast('已复制', 'ok')); };
   const cancel = () => { cleanup(); };
   function cleanup() {
     $('#modalMask').classList.remove('open');
@@ -1463,7 +1468,6 @@ function showNewKey(key) {
 async function openDetail(id) {
   try {
     const { subscription, usage } = await api('/admin/subs/' + id);
-    state.detailSub = subscription; state.detailUsage = usage;
     $('#detailTitle').textContent = subscription.name;
     $('#detailBody').innerHTML = renderDetail(subscription, usage);
     $('#detailMask').classList.add('open');
@@ -1492,7 +1496,7 @@ function renderDetail(s, usage) {
   html += kv('创建', shortTime(s.created_at));
   html += '<div class="card-title" style="margin:20px 0 12px">最近 20 条用量</div>';
   if (usage.length) {
-    html += '<div style="font-size:12px"><table><thead><tr><th>时间</th><th>模型</th><th>成本</th><th>状态</th></tr></thead><tbody>' +
+    html += '<div class="table-wrap" style="font-size:12px"><table><thead><tr><th>时间</th><th>模型</th><th>成本</th><th>状态</th></tr></thead><tbody>' +
       usage.map((r) => '<tr><td>' + shortTime(r.created_at) + '</td><td class="mono">' + esc(r.model) + '</td><td class="mono">$' + fmt(r.cost_usd, 6) + '</td><td>' + esc(r.status) + '</td></tr>').join('') +
       '</tbody></table></div>';
   } else {
