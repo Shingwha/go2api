@@ -4,7 +4,9 @@ const { getModelCatalog } = require('./prices');
 
 /**
  * 根据 usage 计算美元成本。
- * usage 三种协议已归一化为 { input, output, cached, cacheWrite }
+ * usage 已归一化为 { input, output, cached, cacheWrite }，其中 input 为
+ * 「不含缓存的净输入」（extractUsage/parseUsage 归一化时已扣除 cached 与 cacheWrite，
+ * 避免缓存 token 被重复计费）。
  */
 function calcCost(model, u) {
   const p = getModelCatalog()[model];
@@ -12,12 +14,12 @@ function calcCost(model, u) {
 
   const input = u.input || 0;
   const output = u.output || 0;
-  const cached = Math.min(u.cached || 0, input);
+  const cached = u.cached || 0;
   const cacheWrite = u.cacheWrite || 0;
 
-  // 长上下文档位（如 GPT 5.6 Luna > 272K tokens）
+  // 长上下文档位（如 GPT 5.6 Luna > 272K tokens），总 token 含缓存
   let price = p;
-  if (p.highThreshold && (input + output) > p.highThreshold) {
+  if (p.highThreshold && (input + cached + cacheWrite + output) > p.highThreshold) {
     price = {
       in: p.inHigh, out: p.outHigh,
       cacheRead: p.cacheReadHigh, cacheWrite: p.cacheWriteHigh,
@@ -25,7 +27,7 @@ function calcCost(model, u) {
   }
 
   const cost =
-    (input - cached) * price.in +
+    input * price.in +
     cached * price.cacheRead +
     cacheWrite * price.cacheWrite +
     output * price.out;
@@ -35,6 +37,11 @@ function calcCost(model, u) {
 
 /**
  * 从三种协议的响应对象中提取 usage，归一化为 { input, output, cached, cacheWrite }。
+ * input 为净输入（已扣除 cached 与 cacheWrite），避免 calcCost 重复计费。
+ * 各协议原始语义：
+ *  - chat/completions: prompt_tokens 含 cached_tokens（及 cache_creation_input_tokens）
+ *  - messages (Anthropic): input_tokens 含 cache_creation、不含 cache_read
+ *  - responses: input_tokens 含 cached_tokens
  * 提取不到返回 null。
  */
 function extractUsage(obj, endpoint) {
@@ -43,32 +50,39 @@ function extractUsage(obj, endpoint) {
   if (!u) return null;
 
   if (endpoint === 'chat/completions') {
-    const cached = u.prompt_tokens_details?.cached_tokens || 0;
     if (u.prompt_tokens == null && u.completion_tokens == null) return null;
+    const det = u.prompt_tokens_details || {};
+    // 各家缓存字段格式不一：OpenAI/xAI 用 details.cached_tokens，
+    // Moonshot 顶层 cached_tokens，DeepSeek 用 prompt_cache_hit_tokens
+    const cached = u.cached_tokens ?? det.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
+    const cacheWrite = det.cache_creation_input_tokens ?? 0;
     return {
-      input: u.prompt_tokens || 0,
+      input: Math.max(0, (u.prompt_tokens || 0) - cached - cacheWrite),
       output: u.completion_tokens || 0,
       cached,
-      cacheWrite: 0,
+      cacheWrite,
     };
   }
 
   if (endpoint === 'messages') {
     if (u.input_tokens == null && u.output_tokens == null) return null;
+    const cacheWrite = u.cache_creation_input_tokens || 0;
     return {
-      input: u.input_tokens || 0,
+      // input_tokens 已含 cache_creation，需扣除；cache_read 本就不在 input_tokens 里
+      input: Math.max(0, (u.input_tokens || 0) - cacheWrite),
       output: u.output_tokens || 0,
       cached: u.cache_read_input_tokens || 0,
-      cacheWrite: u.cache_creation_input_tokens || 0,
+      cacheWrite,
     };
   }
 
   // responses
   if (u.input_tokens == null && u.output_tokens == null) return null;
+  const cached = u.input_tokens_details?.cached_tokens || 0;
   return {
-    input: u.input_tokens || 0,
+    input: Math.max(0, (u.input_tokens || 0) - cached),
     output: u.output_tokens || 0,
-    cached: u.input_tokens_details?.cached_tokens || 0,
+    cached,
     cacheWrite: 0,
   };
 }
@@ -89,7 +103,9 @@ function extractCost(obj) {
  */
 function parseUsage(obj, endpoint) {
   if (!obj || typeof obj !== 'object') return { usage: null, cost: null };
-  // 流式 inference-cost 事件（x-opencode-type），上游直接给出真实成本
+  // 流式 inference-cost 事件（x-opencode-type）——当前上游实测不发送该事件，保留分支以防御。
+  // 若收到：normalizedUsage 的 inputTokens 已是不含缓存的净输入（上游归一化时
+  // 已扣除 cacheRead/cacheWrite），与 extractUsage 的语义一致，calcCost 直接相加即可。
   if (obj['x-opencode-type'] === 'inference-cost') {
     const n = obj.normalizedUsage || {};
     return {

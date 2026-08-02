@@ -4,7 +4,7 @@
 
 - **模型控制**：全局白名单 + 每个订阅独立模型白名单（如只给 deepseek-v4-flash、kimi-k2.6）
 - **用量控制**：美元额度 / 请求数上限 / RPM 限流 / 每日限流 / 过期时间，超限自动拒绝
-- **用量统计**：按 token 精确记账（优先采用上游 `inference-cost` 事件真实成本，缺省回退价格表估算），管理端实时查看
+- **用量统计**：按 token 精确记账（净输入/缓存读/缓存写/输出分开计价，缓存不重复计费），管理端实时查看
 - **多协议转发**：OpenAI `chat/completions`、OpenAI `responses`、Anthropic `messages` 三种端点全支持，SSE 流式透传
 - **Web 控制台**：浏览器可视化管理订阅、额度、用量
 - **零 npm 依赖**：Node 24 内置 `node:sqlite`，部署零编译、零坑
@@ -84,10 +84,11 @@ curl -X POST https://你的域名/admin/subs \
 
 模型目录/价格表来自 [OpenCode Go 官方文档](https://opencode.ai/docs/zh-cn/go/)（`src/prices.js`，含上游实际提供但文档未列的新模型）。记账逻辑：
 
-1. 流式响应优先解析上游 `x-opencode-type: inference-cost` 事件，**直接采用上游真实成本**
-2. 非流式响应带 `cost` 字段且非零时采用
-3. 都没有则按价格表 × usage 计算（缓存读取/写入单独计价）
-4. usage 缺失时按 `max_tokens` 兜底估算
+> 实测（2026-08）：上游响应带 `cost` 字段但**恒为 `"0"`**（Go 为订阅制，不按量计费），也无 `inference-cost` 事件，因此金额一律按本地价格表 × usage 计算。
+
+1. 计费公式：`净输入 × 输入价 + 缓存读 × 缓存读价 + 缓存写 × 缓存写价 + 输出 × 输出价`，每个 token 只计一次（缓存不重复计费）
+2. usage 的 `input` 已归一化为净输入（扣除缓存读/写），兼容各家缓存字段格式（`prompt_tokens_details.cached_tokens` / 顶层 `cached_tokens` / `prompt_cache_hit_tokens`）
+3. usage 缺失时按 `max_tokens` 兜底估算
 
 ## 测试
 

@@ -242,7 +242,8 @@ async function forwardStream(upstreamRes, res, sub, model, endpoint, body) {
   let buf = '';
 
   const finish = () => {
-    // 记账：优先用上游 usage / cost（inference-cost 事件），缺失则估算
+    // 记账：上游 cost 实测恒为 "0"（Go 订阅制不按量计费），inference-cost 事件也未观察到，
+    // 因此实际全部走 calcCost 按 token 计算；若上游未来返回非零 cost 则优先采用
     let inputTokens = 0, outputTokens = 0, cachedTokens = 0, cacheWriteTokens = 0, costUsd = 0, estimated = 0;
     if (usage) {
       inputTokens = usage.input; outputTokens = usage.output;
