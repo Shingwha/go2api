@@ -5,8 +5,8 @@ const { getModelCatalog } = require('./prices');
 /**
  * 根据 usage 计算美元成本。
  * usage 已归一化为 { input, output, cached, cacheWrite }，其中 input 为
- * 「不含缓存的净输入」（extractUsage/parseUsage 归一化时已扣除 cached 与 cacheWrite，
- * 避免缓存 token 被重复计费）。
+ * 「原始总输入」（含缓存的全部输入 token，便于展示与计算缓存率），
+ * 计费时在此处扣除 cached 与 cacheWrite，避免缓存 token 被重复计费。
  */
 function calcCost(model, u) {
   const p = getModelCatalog()[model];
@@ -17,9 +17,9 @@ function calcCost(model, u) {
   const cached = u.cached || 0;
   const cacheWrite = u.cacheWrite || 0;
 
-  // 长上下文档位（如 GPT 5.6 Luna > 272K tokens），总 token 含缓存
+  // 长上下文档位（如 GPT 5.6 Luna > 272K tokens），总 token = input + output（input 已含缓存）
   let price = p;
-  if (p.highThreshold && (input + cached + cacheWrite + output) > p.highThreshold) {
+  if (p.highThreshold && (input + output) > p.highThreshold) {
     price = {
       in: p.inHigh, out: p.outHigh,
       cacheRead: p.cacheReadHigh, cacheWrite: p.cacheWriteHigh,
@@ -27,7 +27,7 @@ function calcCost(model, u) {
   }
 
   const cost =
-    input * price.in +
+    Math.max(0, input - cached - cacheWrite) * price.in +
     cached * price.cacheRead +
     cacheWrite * price.cacheWrite +
     output * price.out;
@@ -37,7 +37,8 @@ function calcCost(model, u) {
 
 /**
  * 从三种协议的响应对象中提取 usage，归一化为 { input, output, cached, cacheWrite }。
- * input 为净输入（已扣除 cached 与 cacheWrite），避免 calcCost 重复计费。
+ * input 为「原始总输入」（含缓存，与上游返回值一致），cached/cacheWrite 单独列出，
+ * 展示时可直观看到总输入与缓存 token，直接计算缓存率；calcCost 计费时再内部扣除缓存。
  * 各协议原始语义：
  *  - chat/completions: prompt_tokens 含 cached_tokens（及 cache_creation_input_tokens）
  *  - messages (Anthropic): input_tokens 含 cache_creation、不含 cache_read
@@ -57,7 +58,7 @@ function extractUsage(obj, endpoint) {
     const cached = u.cached_tokens ?? det.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
     const cacheWrite = det.cache_creation_input_tokens ?? 0;
     return {
-      input: Math.max(0, (u.prompt_tokens || 0) - cached - cacheWrite),
+      input: u.prompt_tokens || 0,
       output: u.completion_tokens || 0,
       cached,
       cacheWrite,
@@ -68,8 +69,8 @@ function extractUsage(obj, endpoint) {
     if (u.input_tokens == null && u.output_tokens == null) return null;
     const cacheWrite = u.cache_creation_input_tokens || 0;
     return {
-      // input_tokens 已含 cache_creation，需扣除；cache_read 本就不在 input_tokens 里
-      input: Math.max(0, (u.input_tokens || 0) - cacheWrite),
+      // input_tokens 含 cache_creation；cache_read 本就不在 input_tokens 里
+      input: u.input_tokens || 0,
       output: u.output_tokens || 0,
       cached: u.cache_read_input_tokens || 0,
       cacheWrite,
@@ -80,7 +81,7 @@ function extractUsage(obj, endpoint) {
   if (u.input_tokens == null && u.output_tokens == null) return null;
   const cached = u.input_tokens_details?.cached_tokens || 0;
   return {
-    input: Math.max(0, (u.input_tokens || 0) - cached),
+    input: u.input_tokens || 0,
     output: u.output_tokens || 0,
     cached,
     cacheWrite: 0,
@@ -104,16 +105,18 @@ function extractCost(obj) {
 function parseUsage(obj, endpoint) {
   if (!obj || typeof obj !== 'object') return { usage: null, cost: null };
   // 流式 inference-cost 事件（x-opencode-type）——当前上游实测不发送该事件，保留分支以防御。
-  // 若收到：normalizedUsage 的 inputTokens 已是不含缓存的净输入（上游归一化时
-  // 已扣除 cacheRead/cacheWrite），与 extractUsage 的语义一致，calcCost 直接相加即可。
+  // 若收到：normalizedUsage 的 inputTokens 是不含缓存的净输入，这里还原为「总输入」
+  // （+cacheRead/+cacheWrite），与 extractUsage 的语义一致（input 含缓存，计费由 calcCost 扣除）。
   if (obj['x-opencode-type'] === 'inference-cost') {
     const n = obj.normalizedUsage || {};
+    const cached = n.cacheReadTokens || 0;
+    const cacheWrite = (n.cacheWrite5mTokens || 0) + (n.cacheWrite1hTokens || 0);
     return {
       usage: {
-        input: n.inputTokens || 0,
+        input: (n.inputTokens || 0) + cached + cacheWrite,
         output: n.outputTokens || 0,
-        cached: n.cacheReadTokens || 0,
-        cacheWrite: (n.cacheWrite5mTokens || 0) + (n.cacheWrite1hTokens || 0),
+        cached,
+        cacheWrite,
       },
       cost: extractCost(obj),
     };
